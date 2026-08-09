@@ -1,9 +1,39 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { animate, useReducedMotion } from 'framer-motion';
 import { Heart } from 'lucide-react';
 import { computeFamilyStats, getDaysUntilBirthday, getForestRoots, getFullName } from '../utils/familyUtils';
 import { computeForestLayout, NODE_H, V_GAP } from '../hooks/useTreeLayout';
 import Modal from './Modal';
 import '../styles/StatsPanel.css';
+
+// Animates a stat card's number counting up to its real value instead of just
+// appearing — from wherever it last landed (not always 0), so a value that
+// changes while the panel happens to be open doesn't visibly reset partway
+// through. Skips straight to the final value for reduced-motion users.
+function CountUp({ value }) {
+  const [display, setDisplay] = useState(0);
+  const prevRef = useRef(0);
+  const prefersReducedMotion = useReducedMotion();
+
+  useEffect(() => {
+    if (prefersReducedMotion) {
+      setDisplay(value);
+      prevRef.current = value;
+      return undefined;
+    }
+    const controls = animate(prevRef.current, value, {
+      duration: 0.8,
+      ease: [0.16, 1, 0.3, 1],
+      onUpdate: (v) => {
+        prevRef.current = v;
+        setDisplay(Math.round(v));
+      },
+    });
+    return () => controls.stop();
+  }, [value, prefersReducedMotion]);
+
+  return display;
+}
 
 // Generation index (0 = topmost row) for EVERY person, taken directly from Full
 // Tree View's OWN row positions (computeForestLayout — the exact same layout the
@@ -191,7 +221,7 @@ export default function StatsPanel({ persons, isOpen, onClose, onSelect }) {
               className={`stats-panel-card${openKey === key ? ' is-open' : ''}`}
               onClick={() => toggle(key)}
             >
-              <span className="stats-panel-value">{value}</span>
+              <span className="stats-panel-value"><CountUp value={value} /></span>
               <span className="stats-panel-label">{label}</span>
             </button>
           ))}

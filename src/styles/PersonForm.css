@@ -67,13 +67,6 @@
   min-width: 0;
 }
 
-.person-form-hint {
-  font-size: 11.5px;
-  font-weight: 400;
-  color: var(--color-text-muted);
-  opacity: 0.85;
-}
-
 /* Modern pill-based radio group — bigger, more obvious tap targets than a native
    <select> on a touchscreen, and shows all options at a glance without opening a menu. */
 .person-form-segmented {

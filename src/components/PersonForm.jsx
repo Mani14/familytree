@@ -217,7 +217,6 @@ export default function PersonForm({
               placeholder="e.g. Sambu"
               autoCapitalize="words"
             />
-            <span className="person-form-hint">Shown in brackets next to the name, e.g. “{form.firstName || 'Name'} ({form.petName || 'Pet name'})”</span>
           </label>
 
           <div className="person-form-row">

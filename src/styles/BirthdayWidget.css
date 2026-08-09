@@ -56,12 +56,58 @@
   cursor: pointer;
   text-decoration: underline;
   text-underline-offset: 2px;
-  transition: opacity var(--duration-fast) var(--ease);
+  transition: opacity var(--duration-fast) var(--ease), background var(--duration-fast) var(--ease);
 }
 
 @media (hover: hover) {
   .birthday-widget-item:hover {
     opacity: 0.7;
+  }
+}
+
+/* A same-day "birthday is today!" entry gets a solid, colored pill instead of
+   plain underlined text, so it actually stands out from the "in N days"
+   entries rather than just reading slightly bolder in the same line. */
+.birthday-widget-item-today {
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  background: #f97316;
+  color: #fff;
+  text-decoration: none;
+}
+
+@media (hover: hover) {
+  .birthday-widget-item-today:hover {
+    opacity: 0.85;
+  }
+}
+
+/* Only on a same-day "birthday is today!" entry — a little wiggle to make
+   today's specifically stand out from the plain "in N days" ones. */
+.birthday-widget-bounce {
+  display: inline-block;
+  margin-right: 2px;
+  animation: birthday-widget-bounce 0.9s ease-in-out infinite;
+}
+
+@keyframes birthday-widget-bounce {
+  0%, 100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  25% {
+    transform: translateY(-4px) rotate(-10deg);
+  }
+  50% {
+    transform: translateY(0) rotate(0deg);
+  }
+  75% {
+    transform: translateY(-2px) rotate(10deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .birthday-widget-bounce {
+    animation: none;
   }
 }
 

@@ -23,6 +23,8 @@ const GENDER_COLOR_VAR = {
   female: 'var(--color-female)',
   other: 'var(--color-other)',
 };
+const STAGGER_STEP_MS = 25;
+const MAX_STAGGER_MS = 500; // caps the drop-in delay so a huge family doesn't take forever to finish appearing
 
 // Fits the map to every pin's bounds once, the first time there are any — a
 // ref (not state) so this doesn't re-fit and yank the view on every render,
@@ -54,8 +56,15 @@ export default function FamilyMap({ persons, isOpen, onClose, onSelect }) {
   const [query, setQuery] = useState('');
   const [isOpenResults, setIsOpenResults] = useState(false);
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);
+  const [locatedPersonId, setLocatedPersonId] = useState(null);
   const mapRef = useRef(null);
   const markerRefs = useRef({});
+  // Caches each person's icon by (id, pulse) so an unrelated re-render (e.g.
+  // typing in the search box) doesn't hand Leaflet a brand-new icon object —
+  // that would tear down and recreate the marker's DOM node, replaying its
+  // drop-in entrance animation for everyone, not just whoever's actually
+  // supposed to change.
+  const iconCache = useRef(new Map());
 
   const peopleWithCoords = useMemo(
     () => Object.values(persons).filter((p) => p.locationLat != null && p.locationLng != null),
@@ -74,8 +83,20 @@ export default function FamilyMap({ persons, isOpen, onClose, onSelect }) {
     if (isOpen) {
       setQuery('');
       setIsOpenResults(false);
+      setLocatedPersonId(null);
     }
   }, [isOpen]);
+
+  // Stable per-(person, pulse) icon — see iconCache's own comment above for why.
+  const getIcon = (person, index, pulse) => {
+    const key = `${person.id}-${pulse}`;
+    if (!iconCache.current.has(key)) {
+      const color = GENDER_COLOR_VAR[person.gender] || GENDER_COLOR_VAR.other;
+      const delayMs = Math.min(index * STAGGER_STEP_MS, MAX_STAGGER_MS);
+      iconCache.current.set(key, dotIcon(color, 16, { delayMs, pulse }));
+    }
+    return iconCache.current.get(key);
+  };
 
   const flyTo = (person) => {
     setQuery('');
@@ -85,6 +106,10 @@ export default function FamilyMap({ persons, isOpen, onClose, onSelect }) {
     // popup open — opening it at the very first frame reads as instant/jarring
     // rather than "the map found them".
     setTimeout(() => markerRefs.current[person.id]?.openPopup(), 300);
+    // Pulses continuously (see the infinite iteration-count in global.css)
+    // until a different search replaces it or the map is closed/reopened
+    // (see the isOpen-reset effect above) — no auto-clearing timeout.
+    setLocatedPersonId(person.id);
   };
 
   return (
@@ -138,12 +163,12 @@ export default function FamilyMap({ persons, isOpen, onClose, onSelect }) {
               <TileLayer url={TILE_URLS[theme] || TILE_URLS.light} attribution={TILE_ATTRIBUTION} />
               <FitBounds points={peopleWithCoords.map((p) => [p.locationLat, p.locationLng])} />
               <ZoomTracker onZoomChange={setZoom} />
-              {peopleWithCoords.map((p) => (
+              {peopleWithCoords.map((p, index) => (
                 <Marker
                   key={p.id}
                   ref={(el) => { markerRefs.current[p.id] = el; }}
                   position={[p.locationLat, p.locationLng]}
-                  icon={dotIcon(GENDER_COLOR_VAR[p.gender] || GENDER_COLOR_VAR.other)}
+                  icon={getIcon(p, index, p.id === locatedPersonId)}
                 >
                   {zoom >= MIN_ZOOM_FOR_LABELS && (
                     <Tooltip
@@ -164,7 +189,7 @@ export default function FamilyMap({ persons, isOpen, onClose, onSelect }) {
                     <br />
                     <div className="family-map-popup-actions">
                       <a
-                        className="family-map-popup-view"
+                        className="family-map-popup-view family-map-popup-view--secondary"
                         href={`https://www.google.com/maps/search/?api=1&query=${p.locationLat},${p.locationLng}`}
                         target="_blank"
                         rel="noopener noreferrer"
@@ -173,7 +198,7 @@ export default function FamilyMap({ persons, isOpen, onClose, onSelect }) {
                       </a>
                       <button
                         type="button"
-                        className="family-map-popup-view"
+                        className="family-map-popup-view family-map-popup-view--primary"
                         onClick={() => {
                           onSelect(p.id);
                           onClose();

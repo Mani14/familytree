@@ -33,9 +33,12 @@ export default function BirthdayWidget({ persons, onSelect }) {
           <button
             key={person.id}
             type="button"
-            className="birthday-widget-item"
+            className={`birthday-widget-item${days === 0 ? ' birthday-widget-item-today' : ''}`}
             onClick={() => onSelect(person.id)}
           >
+            {days === 0 && (
+              <span className="birthday-widget-bounce" aria-hidden="true">🎂</span>
+            )}
             {getFullName(person)}
             {days === 0 ? "'s birthday is today!" : `'s birthday in ${days} day${days === 1 ? '' : 's'}`}
           </button>
