@@ -1,15 +1,23 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Moon, Sun } from 'lucide-react';
 import '../styles/ThemeToggle.css';
 
 const STORAGE_KEY = 'family-hierarchy-theme';
 
-export default function ThemeToggle() {
-  // Dark is the default for anyone with no stored preference yet (first visit,
-  // or localStorage cleared) — doesn't affect anyone who's already chosen either
-  // theme, since that choice is what's actually read here.
-  const [theme, setTheme] = useState(() => localStorage.getItem(STORAGE_KEY) || 'dark');
+// `defaultTheme` (admin-configured, see AdminPanel/useAppSettings) only ever
+// applies to someone who's never made their own choice — once a person has
+// toggled it, their own pick in localStorage always wins over the admin default.
+export default function ThemeToggle({ defaultTheme }) {
+  const hadStoredPref = useRef(!!localStorage.getItem(STORAGE_KEY));
+  // Dark is the fallback for anyone with no stored preference and no admin
+  // default yet (first visit, or localStorage cleared) — doesn't affect anyone
+  // who's already chosen either theme, since that choice is what's actually read here.
+  const [theme, setTheme] = useState(() => localStorage.getItem(STORAGE_KEY) || defaultTheme || 'dark');
+
+  useEffect(() => {
+    if (!hadStoredPref.current && defaultTheme) setTheme(defaultTheme);
+  }, [defaultTheme]);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -20,7 +28,10 @@ export default function ThemeToggle() {
     <button
       type="button"
       className="theme-toggle"
-      onClick={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}
+      onClick={() => {
+        hadStoredPref.current = true;
+        setTheme((t) => (t === 'light' ? 'dark' : 'light'));
+      }}
       aria-label={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
       title={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
     >

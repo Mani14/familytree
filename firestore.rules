@@ -1,0 +1,45 @@
+rules_version = '2';
+
+// families/main: the one shared tree doc — any signed-in relative can read/write it.
+// users/{uid}: personal prefs (meId, rootId) — only that account can touch its own
+//   doc, EXCEPT admins, who can also read/write everyone's (see AdminPanel's
+//   "Linked Accounts" view and account-fixing needs).
+// settings/admins, settings/app: admin-managed config — any signed-in user can read
+//   (so the client can check its own admin status / apply feature flags), but only
+//   an existing admin can write. Mirrors src/hooks/useAdmin.js's PERMANENT_ADMIN_EMAILS.
+// Everything else is denied by default.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAdmin() {
+      return request.auth != null && (
+        request.auth.token.email in ['manikandan.ks.14@gmail.com'] ||
+        (
+          exists(/databases/$(database)/documents/settings/admins) &&
+          request.auth.token.email in get(/databases/$(database)/documents/settings/admins).data.emails
+        )
+      );
+    }
+
+    match /families/main {
+      allow read, write: if request.auth != null;
+    }
+
+    match /users/{userId} {
+      allow read, write: if request.auth != null && (request.auth.uid == userId || isAdmin());
+    }
+
+    match /settings/admins {
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
+    }
+
+    match /settings/app {
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

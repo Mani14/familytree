@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { motion, Reorder, useDragControls } from 'framer-motion';
 import { BadgeCheck, Baby, Briefcase, Cake, ChevronDown, ChevronUp, Crown, GitBranch, GripVertical, HeartHandshake, Mail, MapPin, PartyPopper, Pencil, Phone, Route, Sparkles, Trash2, UserPlus, Users, X, XCircle } from 'lucide-react';
 import {
+  formatBirthdayNoYear,
   formatDateDisplay,
   getAgeInfo,
   getChildren,
@@ -174,6 +175,7 @@ export default function PersonDetail({
   isHighlighted,
   meId,
   onSetMe,
+  showAges = true,
   onClose,
   onNavigate,
   onEdit,
@@ -198,7 +200,7 @@ export default function PersonDetail({
   const parents = getParents(persons, person);
   const children = getChildren(persons, person);
   const siblings = getSiblings(persons, person);
-  const ageInfo = getAgeInfo(person);
+  const ageInfo = showAges ? getAgeInfo(person) : null;
   const baseRelationship = anchorId ? getRelationshipLabel(persons, person.id, anchorId) : null;
   const tamilRelationship = anchorId ? getRelationshipLabelTamil(persons, person.id, anchorId) : null;
   const relationshipLabel = baseRelationship
@@ -248,7 +250,11 @@ export default function PersonDetail({
       </div>
 
       <div className="detail-fields">
-        {person.dob && <div className="detail-field"><Cake size={14} /> {formatDateDisplay(person.dob)}</div>}
+        {person.dob && (
+          <div className="detail-field">
+            <Cake size={14} /> {showAges ? formatDateDisplay(person.dob) : formatBirthdayNoYear(person.dob)}
+          </div>
+        )}
         {!person.isAlive && person.dod && <div className="detail-field">🕊️ {formatDateDisplay(person.dod)}</div>}
         {person.work && <div className="detail-field"><Briefcase size={14} /> {person.work}</div>}
         {person.location && (

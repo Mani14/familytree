@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Compass, GitBranch, LogOut, Map, Menu, ShieldCheck } from 'lucide-react';
+import { Compass, GitBranch, LogOut, Map, Menu, ShieldAlert, ShieldCheck } from 'lucide-react';
 import ImportExport from './ImportExport';
 import '../styles/MobileMenu.css';
 
@@ -19,6 +19,9 @@ export default function MobileMenu({
   onOpenDataHealth,
   onOpenFeatures,
   onOpenFamilyMap,
+  onOpenAdmin,
+  isAdmin,
+  familyMapEnabled = true,
   onSignOut,
   userEmail,
   userPicture,
@@ -87,15 +90,19 @@ export default function MobileMenu({
               exit={{ opacity: 0, y: -6, scale: 0.96 }}
               transition={{ duration: 0.16, ease: [0.4, 0, 0.2, 1] }}
             >
-              <button type="button" role="menuitem" onClick={() => { onOpenFamilyMap(); close(); }}>
-                <Map size={15} /> Family Map
-              </button>
+              {familyMapEnabled && (
+                <button type="button" role="menuitem" onClick={() => { onOpenFamilyMap(); close(); }}>
+                  <Map size={15} /> Family Map
+                </button>
+              )}
               <button type="button" role="menuitem" onClick={() => { onOpenStats(); close(); }}>
                 <Menu size={15} /> Full Stats
               </button>
-              <button type="button" role="menuitem" onClick={() => { onOpenDataHealth(); close(); }}>
-                <ShieldCheck size={15} /> Data Quality
-              </button>
+              {isAdmin && (
+                <button type="button" role="menuitem" onClick={() => { onOpenDataHealth(); close(); }}>
+                  <ShieldCheck size={15} /> Data Quality
+                </button>
+              )}
               <div className="mobile-menu-nested" role="menuitem">
                 <ImportExport
                   exportData={exportData}
@@ -110,6 +117,11 @@ export default function MobileMenu({
               <button type="button" role="menuitem" onClick={() => { onOpenFeatures(); close(); }}>
                 <Compass size={15} /> Demo
               </button>
+              {isAdmin && (
+                <button type="button" role="menuitem" onClick={() => { onOpenAdmin(); close(); }}>
+                  <ShieldAlert size={15} /> Admin Settings
+                </button>
+              )}
               <button type="button" role="menuitem" className="mobile-menu-signout" onClick={() => { onSignOut(); close(); }}>
                 <LogOut size={15} /> Sign Out
               </button>

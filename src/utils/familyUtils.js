@@ -521,6 +521,14 @@ export function getDaysUntilBirthday(dob, today = new Date()) {
   return Math.round((next - start) / 86400000);
 }
 
+// "March 15" — month/day only, no year (used when ages are hidden for privacy).
+export function formatBirthdayNoYear(dob) {
+  if (!dob) return null;
+  const date = new Date(dob);
+  if (isNaN(date)) return null;
+  return date.toLocaleDateString(undefined, { month: 'long', day: 'numeric' });
+}
+
 // Direct children count plus one layer down (children's children) — a quick
 // "family size" indicator for the detail panel.
 export function getFamilyStats(persons, person) {

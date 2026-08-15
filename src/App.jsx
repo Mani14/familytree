@@ -1,8 +1,10 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowLeft, Check, Compass, GitBranch, Link2, LocateFixed, LogOut, Map, Menu, PlayCircle, Redo2, Route, ShieldCheck, Sparkles, Undo2, X } from 'lucide-react';
+import { ArrowLeft, Check, Compass, GitBranch, Link2, LocateFixed, LogOut, Map, Menu, PlayCircle, Redo2, Route, ShieldAlert, ShieldCheck, Sparkles, Undo2, X } from 'lucide-react';
 import { useFamily } from './hooks/useFamily';
 import { useAuth } from './hooks/useAuth';
+import { useAdmin } from './hooks/useAdmin';
+import { useAppSettings } from './hooks/useAppSettings';
 import Login from './components/Login';
 import AttachYourself from './components/AttachYourself';
 import FindConnectionModal from './components/FindConnectionModal';
@@ -17,6 +19,7 @@ import ImportExport from './components/ImportExport';
 import ThemeToggle from './components/ThemeToggle';
 import StatsPanel from './components/StatsPanel';
 import DataHealthPanel from './components/DataHealthPanel';
+import AdminPanel from './components/AdminPanel';
 import MobileMenu from './components/MobileMenu';
 import ConfirmDialog from './components/ConfirmDialog';
 import FeatureShowcase from './components/FeatureShowcase';
@@ -72,6 +75,7 @@ export default function App() {
     removeChild,
     reorderChild,
     replaceAll,
+    resetToSeed,
     exportData,
     undo,
     redo,
@@ -79,6 +83,8 @@ export default function App() {
     canRedo,
   } = useFamily();
   const { user, authReady, signIn, signOut, meId, meReady, myRootId, setMe, setMyRoot } = useAuth();
+  const { isAdmin, adminEmails, permanentAdminEmails, addAdmin, removeAdmin } = useAdmin(user);
+  const { settings: appSettings, updateSettings: updateAppSettings } = useAppSettings();
   const [collapsed, setCollapsed] = useState(() => new Set());
   const [selectedId, setSelectedId] = useState(null);
   const [focusId, setFocusId] = useState(null);
@@ -94,6 +100,7 @@ export default function App() {
   const [showDataHealth, setShowDataHealth] = useState(false);
   const [showFeatureShowcase, setShowFeatureShowcase] = useState(false);
   const [showFamilyMap, setShowFamilyMap] = useState(false);
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [showAttachWizard, setShowAttachWizard] = useState(false);
   const [showWelcomePrompt, setShowWelcomePrompt] = useState(false);
   // A locate request { id, nonce }: the nonce bumps on every Locate so FamilyTree
@@ -423,6 +430,12 @@ export default function App() {
   }, [deletePerson]);
 
   const handleDelete = useCallback((id) => {
+    // Admins skip the confirm step entirely (still fully covered by Undo) —
+    // everyone else gets the normal deliberate confirmation.
+    if (isAdmin) {
+      performDelete(id);
+      return;
+    }
     const person = getPerson(persons, id);
     const name = person ? getFullName(person) : 'this person';
     setConfirmDialog({
@@ -435,7 +448,21 @@ export default function App() {
         setConfirmDialog(null);
       },
     });
-  }, [persons, performDelete]);
+  }, [persons, performDelete, isAdmin]);
+
+  const handleRequestReset = useCallback(() => {
+    setConfirmDialog({
+      title: 'Reset shared tree to seed?',
+      message: "This restores the originally published family data for EVERYONE, discarding all edits made since. This can't be undone once the app is closed (though Undo covers it until then).",
+      confirmLabel: 'Reset',
+      danger: true,
+      onConfirm: () => {
+        resetToSeed();
+        setConfirmDialog(null);
+        setShowAdminPanel(false);
+      },
+    });
+  }, [resetToSeed]);
 
   // Uncollapses every ancestor of a person so a search jump always lands on a visible node.
   const revealAncestors = useCallback((id) => {
@@ -656,7 +683,7 @@ export default function App() {
           <span className="app-logo-mark"><BrandLogo size={22} /></span>
           <h1>Family <span className="app-logo-text-accent">Tree</span></h1>
         </div>
-        <ThemeToggle />
+        <ThemeToggle defaultTheme={appSettings.defaultTheme} />
         {Object.keys(persons).length > 0 && (
           <span className="app-header-count desktop-header-item">{Object.keys(persons).length} members</span>
         )}
@@ -669,15 +696,17 @@ export default function App() {
         >
           <Menu size={17} />
         </button>
-        <button
-          type="button"
-          className="icon-btn desktop-header-item"
-          onClick={() => setShowDataHealth(true)}
-          aria-label="Data health check"
-          title="Scan for broken/inconsistent relationships"
-        >
-          <ShieldCheck size={17} />
-        </button>
+        {isAdmin && (
+          <button
+            type="button"
+            className="icon-btn desktop-header-item"
+            onClick={() => setShowDataHealth(true)}
+            aria-label="Data health check"
+            title="Scan for broken/inconsistent relationships"
+          >
+            <ShieldCheck size={17} />
+          </button>
+        )}
         <button
           type="button"
           className="icon-btn desktop-header-item"
@@ -687,15 +716,28 @@ export default function App() {
         >
           <Compass size={17} />
         </button>
-        <button
-          type="button"
-          className="icon-btn desktop-header-item"
-          onClick={() => setShowFamilyMap(true)}
-          aria-label="Family map"
-          title="See everyone's pinned locations on a map"
-        >
-          <Map size={17} />
-        </button>
+        {appSettings.features.familyMap && (
+          <button
+            type="button"
+            className="icon-btn desktop-header-item"
+            onClick={() => setShowFamilyMap(true)}
+            aria-label="Family map"
+            title="See everyone's pinned locations on a map"
+          >
+            <Map size={17} />
+          </button>
+        )}
+        {isAdmin && (
+          <button
+            type="button"
+            className="icon-btn desktop-header-item"
+            onClick={() => setShowAdminPanel(true)}
+            aria-label="Admin settings"
+            title="Admin settings"
+          >
+            <ShieldAlert size={17} />
+          </button>
+        )}
 
         {!meId ? (
           <div className="app-attach-pill glass-surface">
@@ -723,6 +765,9 @@ export default function App() {
           onOpenDataHealth={() => setShowDataHealth(true)}
           onOpenFeatures={() => setShowFeatureShowcase(true)}
           onOpenFamilyMap={() => setShowFamilyMap(true)}
+          onOpenAdmin={() => setShowAdminPanel(true)}
+          isAdmin={isAdmin}
+          familyMapEnabled={appSettings.features.familyMap}
           onSignOut={signOut}
           userEmail={user.email}
           userPicture={user.picture}
@@ -870,8 +915,8 @@ export default function App() {
         </div>
       )}
 
-      <BirthdayWidget persons={persons} onSelect={handleViewPersonDetails} />
-      <AnniversaryWidget persons={persons} onSelect={handleViewPersonDetails} />
+      {appSettings.features.birthdayWidget && <BirthdayWidget persons={persons} onSelect={handleViewPersonDetails} />}
+      {appSettings.features.anniversaryWidget && <AnniversaryWidget persons={persons} onSelect={handleViewPersonDetails} />}
 
       <main className="app-main">
         {rootPersonId ? (
@@ -917,6 +962,7 @@ export default function App() {
               isHighlighted={highlightedIds.has(selected.id)}
               meId={meId}
               onSetMe={requestSetMe}
+              showAges={appSettings.features.showAges}
               onClose={closeDetail}
               onNavigate={handleSelect}
               onEdit={() => setFormState({ mode: 'edit', personId: selected.id })}
@@ -1018,11 +1064,26 @@ export default function App() {
 
       <DataHealthPanel
         persons={persons}
-        isOpen={showDataHealth}
+        isOpen={showDataHealth && isAdmin}
         onClose={() => setShowDataHealth(false)}
         onSelect={handleLocatePerson}
         updatePerson={updatePerson}
       />
+
+      {isAdmin && (
+        <AdminPanel
+          isOpen={showAdminPanel}
+          onClose={() => setShowAdminPanel(false)}
+          persons={persons}
+          adminEmails={adminEmails}
+          permanentAdminEmails={permanentAdminEmails}
+          addAdmin={addAdmin}
+          removeAdmin={removeAdmin}
+          settings={appSettings}
+          updateSettings={updateAppSettings}
+          onRequestReset={handleRequestReset}
+        />
+      )}
 
       {showAttachWizard && (
         <AttachYourself
