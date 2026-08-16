@@ -1,10 +1,11 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowLeft, Check, Compass, GitBranch, Link2, LocateFixed, LogOut, Map, Menu, PlayCircle, Redo2, Route, ShieldAlert, ShieldCheck, Sparkles, Undo2, X } from 'lucide-react';
+import { ArrowLeft, Check, Compass, GitBranch, Languages, Link2, LocateFixed, LogOut, Map, Menu, PlayCircle, Redo2, Route, ShieldAlert, ShieldCheck, Sparkles, Undo2, X } from 'lucide-react';
 import { useFamily } from './hooks/useFamily';
 import { useAuth } from './hooks/useAuth';
 import { useAdmin } from './hooks/useAdmin';
 import { useAppSettings } from './hooks/useAppSettings';
+import { useRelationshipOverrides } from './hooks/useRelationshipOverrides';
 import Login from './components/Login';
 import AttachYourself from './components/AttachYourself';
 import FindConnectionModal from './components/FindConnectionModal';
@@ -23,6 +24,8 @@ import AdminPanel from './components/AdminPanel';
 import MobileMenu from './components/MobileMenu';
 import ConfirmDialog from './components/ConfirmDialog';
 import FeatureShowcase from './components/FeatureShowcase';
+import RelationshipRulesPanel from './components/RelationshipRulesPanel';
+import EditRelationshipDialog from './components/EditRelationshipDialog';
 import {
   getPerson,
   getFullName,
@@ -85,6 +88,7 @@ export default function App() {
   const { user, authReady, signIn, signOut, meId, meReady, myRootId, setMe, setMyRoot } = useAuth();
   const { isAdmin, adminEmails, permanentAdminEmails, addAdmin, removeAdmin } = useAdmin(user);
   const { settings: appSettings, updateSettings: updateAppSettings } = useAppSettings();
+  const { overrides: relationshipOverrides, addOverride: addRelationshipOverride, removeOverride: removeRelationshipOverride } = useRelationshipOverrides();
   const [collapsed, setCollapsed] = useState(() => new Set());
   const [selectedId, setSelectedId] = useState(null);
   const [focusId, setFocusId] = useState(null);
@@ -101,6 +105,11 @@ export default function App() {
   const [showFeatureShowcase, setShowFeatureShowcase] = useState(false);
   const [showFamilyMap, setShowFamilyMap] = useState(false);
   const [showAdminPanel, setShowAdminPanel] = useState(false);
+  const [showRelationshipRules, setShowRelationshipRules] = useState(false);
+  // { personId, anchorId, signature, currentTerm, baseRelationship } while the
+  // edit-relationship dialog is open, or null when closed.
+  const [editRelationshipState, setEditRelationshipState] = useState(null);
+  const [relationshipRuleError, setRelationshipRuleError] = useState(null);
   const [showAttachWizard, setShowAttachWizard] = useState(false);
   const [showWelcomePrompt, setShowWelcomePrompt] = useState(false);
   // A locate request { id, nonce }: the nonce bumps on every Locate so FamilyTree
@@ -233,6 +242,31 @@ export default function App() {
   const [connectionResult, setConnectionResult] = useState(null); // { fromId, toId } | null
   const [isTraveling, setIsTraveling] = useState(false); // true while the travel animation's hops are still playing out
   const handleFindConnection = useCallback((id) => setFindConnectionFromId(id), []);
+
+  // Opens the edit-relationship dialog for PersonDetail's relationship-badge
+  // pencil icon — mirrors ConfirmDialog's own pattern of owning dialog state
+  // here rather than inside PersonDetail itself.
+  const handleEditRelationship = useCallback((personId, anchorId, signature, currentTerm, baseRelationship) => {
+    setRelationshipRuleError(null);
+    setEditRelationshipState({ personId, anchorId, signature, currentTerm, baseRelationship });
+  }, []);
+
+  const handleSaveRelationshipOverride = useCallback((term) => {
+    if (!editRelationshipState) return;
+    const { personId, anchorId, signature, baseRelationship } = editRelationshipState;
+    const subject = getPerson(persons, personId);
+    const anchor = getPerson(persons, anchorId);
+    const label = subject && anchor
+      ? `${getFullName(subject)} → ${getFullName(anchor)}: ${baseRelationship || 'related'}`
+      : baseRelationship || 'related';
+    addRelationshipOverride(signature, term, label)
+      .then(() => setEditRelationshipState(null))
+      .catch((err) => setRelationshipRuleError(err.message || String(err)));
+  }, [editRelationshipState, persons, addRelationshipOverride]);
+
+  const handleRemoveRelationshipOverride = useCallback((id) => {
+    removeRelationshipOverride(id).catch((err) => setRelationshipRuleError(err.message || String(err)));
+  }, [removeRelationshipOverride]);
 
   // Links a person as "me" and, if they're missing a photo/email, backfills those
   // from the signed-in Google account — never overwrites data that's already there.
@@ -741,6 +775,15 @@ export default function App() {
             <Map size={17} />
           </button>
         )}
+        <button
+          type="button"
+          className="icon-btn desktop-header-item"
+          onClick={() => setShowRelationshipRules(true)}
+          aria-label="Relationship term rules"
+          title="Manage custom Tamil relationship term corrections"
+        >
+          <Languages size={17} />
+        </button>
         {isAdmin && (
           <button
             type="button"
@@ -779,6 +822,7 @@ export default function App() {
           onOpenDataHealth={() => setShowDataHealth(true)}
           onOpenFeatures={() => setShowFeatureShowcase(true)}
           onOpenFamilyMap={() => setShowFamilyMap(true)}
+          onOpenRelationshipRules={() => setShowRelationshipRules(true)}
           onOpenAdmin={() => setShowAdminPanel(true)}
           isAdmin={isAdmin}
           familyMapEnabled={appSettings.features.familyMap}
@@ -996,6 +1040,8 @@ export default function App() {
               onHighlightLineage={handleHighlightLineage}
               onClearHighlight={handleClearHighlight}
               onFindConnection={handleFindConnection}
+              overrides={relationshipOverrides}
+              onEditRelationship={handleEditRelationship}
             />
           )}
         </AnimatePresence>
@@ -1006,7 +1052,7 @@ export default function App() {
         const toPerson = getPerson(persons, connectionResult.toId);
         if (!fromPerson || !toPerson) return null;
         const english = getRelationshipLabel(persons, connectionResult.toId, connectionResult.fromId);
-        const tamil = getRelationshipLabelTamil(persons, connectionResult.toId, connectionResult.fromId);
+        const tamil = getRelationshipLabelTamil(persons, connectionResult.toId, connectionResult.fromId, relationshipOverrides);
         return (
           <div className="connection-result glass-surface">
             <Route size={14} />
@@ -1084,6 +1130,23 @@ export default function App() {
         onClose={() => setShowDataHealth(false)}
         onSelect={handleLocatePerson}
         updatePerson={updatePerson}
+      />
+
+      <RelationshipRulesPanel
+        overrides={relationshipOverrides}
+        isOpen={showRelationshipRules}
+        onClose={() => { setShowRelationshipRules(false); setRelationshipRuleError(null); }}
+        onRemove={handleRemoveRelationshipOverride}
+        error={relationshipRuleError}
+      />
+
+      <EditRelationshipDialog
+        isOpen={!!editRelationshipState}
+        subjectLabel={editRelationshipState?.baseRelationship}
+        currentTerm={editRelationshipState?.currentTerm}
+        error={relationshipRuleError}
+        onSave={handleSaveRelationshipOverride}
+        onCancel={() => { setEditRelationshipState(null); setRelationshipRuleError(null); }}
       />
 
       {isAdmin && (

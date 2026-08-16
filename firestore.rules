@@ -1,6 +1,8 @@
 rules_version = '2';
 
 // families/main: the one shared tree doc — any signed-in relative can read/write it.
+// families/relationshipOverrides: custom Tamil relationship-term rules, same
+//   any-signed-in-relative access as families/main.
 // users/{uid}: personal prefs (meId, rootId) — only that account can touch its own
 //   doc, EXCEPT admins, who can also read/write everyone's (see AdminPanel's
 //   "Linked Accounts" view and account-fixing needs).
@@ -21,6 +23,15 @@ service cloud.firestore {
     }
 
     match /families/main {
+      allow read, write: if request.auth != null;
+    }
+
+    // Self-service Tamil relationship-term corrections — any signed-in
+    // relative can add/remove a rule, matching families/main's own
+    // permissiveness (the whole point is fixing a wrong term yourself
+    // without needing an admin; mistakes are visible/reversible in the
+    // Relationship Rules panel).
+    match /families/relationshipOverrides {
       allow read, write: if request.auth != null;
     }
 

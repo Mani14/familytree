@@ -13,6 +13,7 @@ import {
   getParents,
   getRelationshipLabel,
   getRelationshipLabelTamil,
+  getRelationshipSignature,
   getSiblings,
   getSpouse,
 } from '../utils/familyUtils';
@@ -193,6 +194,8 @@ export default function PersonDetail({
   onHighlightLineage,
   onClearHighlight,
   onFindConnection,
+  overrides = [],
+  onEditRelationship,
 }) {
   if (!person) return null;
 
@@ -202,7 +205,12 @@ export default function PersonDetail({
   const siblings = getSiblings(persons, person);
   const ageInfo = showAges ? getAgeInfo(person) : null;
   const baseRelationship = anchorId ? getRelationshipLabel(persons, person.id, anchorId) : null;
-  const tamilRelationship = anchorId ? getRelationshipLabelTamil(persons, person.id, anchorId) : null;
+  const tamilRelationship = anchorId ? getRelationshipLabelTamil(persons, person.id, anchorId, overrides) : null;
+  // null whenever the relationship isn't customizable at all (e.g. person IS
+  // anchor's spouse — கணவர்/மனைவி is unambiguous already) — gates the pencil
+  // affordance below independently of relationshipLabel's own (English-only)
+  // truthiness check.
+  const relationshipSignature = anchorId ? getRelationshipSignature(persons, person.id, anchorId) : null;
   const relationshipLabel = baseRelationship
     ? `${tamilRelationship ? `${tamilRelationship} · ` : ''}${baseRelationship} (to ${anchorContext})`
     : null;
@@ -239,7 +247,20 @@ export default function PersonDetail({
           </div>
           {!person.isAlive && <span className="detail-badge">Passed Away</span>}
           {relationshipLabel && (
-            <span className="detail-badge detail-badge-relation">{relationshipLabel}</span>
+            <span className="detail-badge detail-badge-relation">
+              {relationshipLabel}
+              {relationshipSignature && onEditRelationship && (
+                <button
+                  type="button"
+                  className="detail-relation-edit-btn"
+                  onClick={() => onEditRelationship(person.id, anchorId, relationshipSignature, tamilRelationship, baseRelationship)}
+                  title="Correct this Tamil term — applies everywhere this same relationship shape occurs"
+                  aria-label="Edit relationship term"
+                >
+                  <Pencil size={10} />
+                </button>
+              )}
+            </span>
           )}
           {ageInfo && (
             <span className="detail-age">

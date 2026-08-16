@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Compass, GitBranch, LogOut, Map, Menu, ShieldAlert, ShieldCheck } from 'lucide-react';
+import { Compass, GitBranch, Languages, LogOut, Map, Menu, ShieldAlert, ShieldCheck } from 'lucide-react';
 import ImportExport from './ImportExport';
 import '../styles/MobileMenu.css';
 
@@ -19,6 +19,7 @@ export default function MobileMenu({
   onOpenDataHealth,
   onOpenFeatures,
   onOpenFamilyMap,
+  onOpenRelationshipRules,
   onOpenAdmin,
   isAdmin,
   familyMapEnabled = true,
@@ -103,6 +104,9 @@ export default function MobileMenu({
                   <ShieldCheck size={15} /> Data Quality
                 </button>
               )}
+              <button type="button" role="menuitem" onClick={() => { onOpenRelationshipRules(); close(); }}>
+                <Languages size={15} /> Relationship Rules
+              </button>
               <div className="mobile-menu-nested" role="menuitem">
                 <ImportExport
                   exportData={exportData}

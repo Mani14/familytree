@@ -1238,7 +1238,7 @@ function tamilInLawLabel(persons, personId, rootId, male, female) {
 // label, joined with " / " if both apply), but in Tamil terms that track side and
 // birth order where English doesn't. Meant to be shown ALONGSIDE the English
 // label (before it), not as a replacement — see PersonDetail's relationshipLabel.
-export function getRelationshipLabelTamil(persons, personId, rootId) {
+export function getRelationshipLabelTamil(persons, personId, rootId, overrides = []) {
   if (!personId || !rootId || personId === rootId) return null;
   const person = getPerson(persons, personId);
   const root = getPerson(persons, rootId);
@@ -1248,6 +1248,15 @@ export function getRelationshipLabelTamil(persons, personId, rootId) {
     if (person.gender === 'male') return 'கணவர்';
     if (person.gender === 'female') return 'மனைவி';
     return 'வாழ்க்கைத் துணை';
+  }
+
+  // User-authored corrections (see getRelationshipSignature below) take
+  // priority over the computed default, for any relationship shape someone
+  // has explicitly fixed via PersonDetail's edit affordance.
+  if (overrides.length) {
+    const signature = getRelationshipSignature(persons, personId, rootId);
+    const hit = signature && overrides.find((o) => o.signature && signatureFingerprint(o.signature) === signatureFingerprint(signature));
+    if (hit) return hit.term;
   }
 
   const male = person.gender === 'male';
@@ -1261,6 +1270,262 @@ export function getRelationshipLabelTamil(persons, personId, rootId) {
 
   const parts = [blood, inLaw].filter(Boolean);
   return parts.length ? parts.join(' / ') : null;
+}
+
+// --- Custom relationship-term rules -----------------------------------------
+// Lets a user correct a wrong Tamil term (via PersonDetail's edit affordance)
+// in a way that applies to every pair of people anywhere in the tree sharing
+// the same relationship SHAPE, not just the two people being viewed — e.g.
+// "grandfather's brother's daughter is Athai" should fix every such pair, not
+// one specific grandfather. getRelationshipSignature independently re-derives
+// just the discriminating inputs (distance to a common ancestor, side, gender,
+// birth order, same/cross-line) that getRelationshipLabelTamil's own branches
+// above already key on — deliberately NOT a richer genealogy fingerprint than
+// what a given branch actually consults, so two different real families
+// collapse onto the same signature exactly when the engine already treats
+// them identically today. This is purely ADDITIVE (calls the same private
+// helpers the term-computation functions above already use) and doesn't
+// modify any of them — zero regression risk to the tuned terms above, but
+// also means any future change to those branches' conditions needs a
+// matching update here, or a rule can silently stop matching (or over-match).
+
+function fillSignature(kind, fields = {}) {
+  return {
+    kind,
+    distA: fields.distA ?? null,
+    distB: fields.distB ?? null,
+    gender: fields.gender ?? null,
+    relGender: fields.relGender ?? null,
+    rootGender: fields.rootGender ?? null,
+    side: fields.side ?? null,
+    order: fields.order ?? null,
+    lineMatch: fields.lineMatch ?? null,
+  };
+}
+
+// Mirrors tamilBloodLabelFromDistances' own branches 1:1 (see that function
+// for the reasoning behind each — comments aren't repeated here).
+function bloodSignature(persons, personId, rootId, ca, gender) {
+  const { ancestorId, distA: distPerson, distB: distRoot } = ca;
+
+  if (distRoot === distPerson) {
+    if (distRoot === 1) {
+      const order = tamilBirthOrder(persons, ancestorId, personId, rootId);
+      return fillSignature('blood', { distA: distPerson, distB: distRoot, gender, order });
+    }
+    if (distRoot === 2) {
+      const rootParent = tamilConnectingChild(persons, ancestorId, rootId, 2);
+      const personParent = tamilConnectingChild(persons, ancestorId, personId, 2);
+      const rootParentGender = rootParent ? getPerson(persons, rootParent)?.gender : null;
+      const personParentGender = personParent ? getPerson(persons, personParent)?.gender : null;
+      if (rootParentGender && personParentGender) {
+        const lineMatch = rootParentGender === personParentGender ? 'same' : 'cross';
+        const order = lineMatch === 'same' ? tamilBirthOrder(persons, ancestorId, personParent, rootParent) : null;
+        return fillSignature('blood', { distA: distPerson, distB: distRoot, gender, lineMatch, order });
+      }
+    }
+    return fillSignature('blood', { distA: distPerson, distB: distRoot, gender });
+  }
+  if (distRoot < distPerson) {
+    if (distRoot === 1 && distPerson === 2) {
+      const connecting = tamilConnectingChild(persons, ancestorId, personId, distPerson);
+      const connectingGender = connecting ? getPerson(persons, connecting)?.gender : null;
+      const rootGender = getPerson(persons, rootId)?.gender ?? null;
+      const lineMatch = connectingGender && rootGender ? (connectingGender === rootGender ? 'same' : 'cross') : null;
+      return fillSignature('blood', { distA: distPerson, distB: distRoot, gender, lineMatch });
+    }
+    if (distRoot === 2 && distPerson === 3) {
+      const rootParent = tamilConnectingChild(persons, ancestorId, rootId, 2);
+      const cousinParent = tamilConnectingChild(persons, ancestorId, personId, 3);
+      const rootParentGender = rootParent ? getPerson(persons, rootParent)?.gender : null;
+      const cousinParentGender = cousinParent ? getPerson(persons, cousinParent)?.gender : null;
+      if (rootParentGender && cousinParentGender) {
+        const isParallel = rootParentGender === cousinParentGender;
+        const cousin = tamilConnectingChild(persons, cousinParent, personId, 2);
+        const cousinGender = cousin ? getPerson(persons, cousin)?.gender : null;
+        if (cousinGender) {
+          const ownLine = isParallel ? cousinGender === 'male' : cousinGender === 'female';
+          return fillSignature('blood', { distA: distPerson, distB: distRoot, gender, lineMatch: ownLine ? 'same' : 'cross' });
+        }
+      }
+    }
+    return fillSignature('blood', { distA: distPerson, distB: distRoot, gender });
+  }
+  if (distPerson < distRoot) {
+    if (distPerson === 1 && distRoot === 2) {
+      const side = tamilSideFromRoot(persons, rootId, ancestorId);
+      const connectingParent = tamilConnectingChild(persons, ancestorId, rootId, 2);
+      const order = connectingParent ? tamilBirthOrder(persons, ancestorId, personId, connectingParent) : null;
+      return fillSignature('blood', { distA: distPerson, distB: distRoot, gender, side, order });
+    }
+    if (distPerson === 2 && distRoot === 3) {
+      const connectingSibling = tamilConnectingChild(persons, ancestorId, personId, 2);
+      if (connectingSibling) {
+        const side = tamilSideFromRoot(persons, rootId, ancestorId);
+        const connectingParent = tamilConnectingChild(persons, ancestorId, rootId, 3);
+        const order = connectingParent ? tamilBirthOrder(persons, ancestorId, connectingSibling, connectingParent) : null;
+        return fillSignature('blood', { distA: distPerson, distB: distRoot, gender, side, order });
+      }
+    }
+  }
+  // Straight ancestor/descendant line, distant cousins, or an indeterminate
+  // side/order within one of the buckets above — the bucket itself (distA,
+  // distB) is the whole discriminator, matching that branch's own fallback.
+  return fillSignature('blood', { distA: distPerson, distB: distRoot, gender });
+}
+
+// Mirrors tamilInLawLabel's "person's spouse is blood-related to root" branch
+// 1:1 (person married into root's family, or person's spouse IS a direct
+// ancestor of root — e.g. a grandfather's wife).
+function inLawMarriedInSignature(persons, personId, rootId, ca, gender) {
+  const { ancestorId, distA: distSP, distB: distRoot } = ca;
+  const person = getPerson(persons, personId);
+  const spouse = getPerson(persons, person.spouseId);
+  if (!spouse) return null;
+  const relGender = spouse.gender ?? null;
+
+  if (distSP === 0 || distRoot === 0) {
+    return fillSignature('inlaw-married-in', { distA: distSP, distB: distRoot, gender });
+  }
+  if (distRoot === 1 && distSP === 1) {
+    const order = tamilBirthOrder(persons, ancestorId, person.spouseId, rootId);
+    return fillSignature('inlaw-married-in', { distA: distSP, distB: distRoot, gender, relGender, order });
+  }
+  if (distSP === 1 && distRoot === 2) {
+    const side = tamilSideFromRoot(persons, rootId, ancestorId);
+    const connectingParent = tamilConnectingChild(persons, ancestorId, rootId, 2);
+    const order = connectingParent ? tamilBirthOrder(persons, ancestorId, person.spouseId, connectingParent) : null;
+    return fillSignature('inlaw-married-in', { distA: distSP, distB: distRoot, gender, relGender, side, order });
+  }
+  if (distSP === 1 && distRoot > 2) {
+    return fillSignature('inlaw-married-in', { distA: distSP, distB: distRoot, gender });
+  }
+  if (distSP === 2 && distRoot === 2) {
+    const cousinParent = tamilConnectingChild(persons, ancestorId, person.spouseId, distSP);
+    const rootParent = tamilConnectingChild(persons, ancestorId, rootId, distRoot);
+    const cousinParentGender = cousinParent ? getPerson(persons, cousinParent)?.gender : null;
+    const rootParentGender = rootParent ? getPerson(persons, rootParent)?.gender : null;
+    if (cousinParentGender && rootParentGender) {
+      const lineMatch = cousinParentGender === rootParentGender ? 'same' : 'cross';
+      const order = lineMatch === 'same'
+        ? tamilBirthOrder(persons, ancestorId, cousinParent, rootParent)
+        : tamilAgeOrder(persons, personId, rootId);
+      return fillSignature('inlaw-married-in', { distA: distSP, distB: distRoot, gender, relGender, lineMatch, order });
+    }
+    return null;
+  }
+  if (distSP === 2 && distRoot === 3) {
+    const connectingSibling = tamilConnectingChild(persons, ancestorId, person.spouseId, 2);
+    if (connectingSibling) {
+      const side = tamilSideFromRoot(persons, rootId, ancestorId);
+      const connectingParent = tamilConnectingChild(persons, ancestorId, rootId, 3);
+      const order = connectingParent ? tamilBirthOrder(persons, ancestorId, connectingSibling, connectingParent) : null;
+      return fillSignature('inlaw-married-in', { distA: distSP, distB: distRoot, gender, relGender, side, order });
+    }
+    return null;
+  }
+  return null;
+}
+
+// Mirrors tamilInLawLabel's "person is blood-related to root's own spouse"
+// branch 1:1 (root married into person's family).
+function inLawSpouseKinSignature(persons, personId, rootId, ca, gender) {
+  const { ancestorId, distA: distPersonToAnc, distB: distRS } = ca;
+  const root = getPerson(persons, rootId);
+
+  if (distPersonToAnc === 0 || (distPersonToAnc === 1 && distRS > 2) || (distPersonToAnc === 2 && distRS === 1)) {
+    return fillSignature('inlaw-spouse-kin', { distA: distPersonToAnc, distB: distRS, gender });
+  }
+  if (distPersonToAnc === 1 && distRS === 1) {
+    const order = tamilBirthOrder(persons, ancestorId, personId, root.spouseId);
+    return fillSignature('inlaw-spouse-kin', { distA: distPersonToAnc, distB: distRS, gender, rootGender: root.gender ?? null, order });
+  }
+  if (distPersonToAnc === 1 && distRS === 2) {
+    const side = tamilSideFromRoot(persons, root.spouseId, ancestorId);
+    const connectingParent = tamilConnectingChild(persons, ancestorId, root.spouseId, 2);
+    const order = connectingParent ? tamilBirthOrder(persons, ancestorId, personId, connectingParent) : null;
+    return fillSignature('inlaw-spouse-kin', { distA: distPersonToAnc, distB: distRS, gender, side, order });
+  }
+  return null;
+}
+
+// Classification key capturing exactly the discriminating inputs
+// getRelationshipLabelTamil's branches use to pick a term for (personId,
+// rootId) — NOT the term itself. Returns null for the root themselves, an
+// unrelated/unrecorded pair, missing ids, or a direct spouse (not
+// customizable in V1 — கணவர்/மனைவி is unambiguous already). Blood always
+// takes priority whenever a common ancestor exists at all, matching
+// getRelationshipLabelTamil's own priority (blood is never null once an
+// ancestor is found; in-law is appended separately, not cost-compared
+// against it) — a rule keyed to the blood signature can't independently
+// target just the in-law half of a rare compound "blood / in-law" pair, an
+// accepted limitation.
+export function getRelationshipSignature(persons, personId, rootId) {
+  if (!personId || !rootId || personId === rootId) return null;
+  const person = getPerson(persons, personId);
+  const root = getPerson(persons, rootId);
+  if (!person || !root) return null;
+  if (person.spouseId === rootId) return null;
+
+  const gender = person.gender === 'male' ? 'male' : person.gender === 'female' ? 'female' : null;
+
+  const bloodCa = commonAncestor(persons, personId, rootId);
+  if (bloodCa) return bloodSignature(persons, personId, rootId, bloodCa, gender);
+
+  const candidates = [];
+
+  if (person.spouseId && person.spouseId !== rootId) {
+    const ca = commonAncestor(persons, person.spouseId, rootId);
+    if (ca) {
+      const sig = inLawMarriedInSignature(persons, personId, rootId, ca, gender);
+      if (sig) candidates.push({ sig, cost: ca.distA + ca.distB });
+    }
+  }
+
+  if (root.spouseId && root.spouseId !== personId) {
+    const ca = commonAncestor(persons, personId, root.spouseId);
+    if (ca) {
+      const sig = inLawSpouseKinSignature(persons, personId, rootId, ca, gender);
+      if (sig) candidates.push({ sig, cost: ca.distA + ca.distB });
+    }
+  }
+
+  if (root.spouseId && person.spouseId && person.spouseId !== rootId && person.spouseId !== root.spouseId) {
+    const inLawSibling = getPerson(persons, person.spouseId);
+    const ca = commonAncestor(persons, person.spouseId, root.spouseId);
+    if (root.gender === 'male' && inLawSibling?.gender === 'female' && ca && ca.distA === 1 && ca.distB === 1) {
+      const order = tamilBirthOrder(persons, ca.ancestorId, person.spouseId, root.spouseId);
+      if (order === 'elder') {
+        candidates.push({
+          sig: fillSignature('inlaw-co-spouse', { distA: 1, distB: 1, gender, relGender: 'female', rootGender: 'male', order: 'elder' }),
+          cost: 3,
+        });
+      }
+    }
+  }
+
+  if (tamilIsSambandhi(persons, personId, rootId) || tamilIsSambandhi(persons, rootId, personId)) {
+    candidates.push({ sig: fillSignature('sambandhi'), cost: 4 });
+  }
+
+  if (tamilCoSiblingInLawTerm(persons, personId, rootId, root.gender, person.gender)) {
+    candidates.push({ sig: fillSignature('co-sibling-in-law', { gender, rootGender: root.gender ?? null }), cost: 4 });
+  }
+
+  if (!candidates.length) return null;
+  candidates.sort((a, b) => a.cost - b.cost);
+  return candidates[0].sig;
+}
+
+const SIGNATURE_FIELDS = ['kind', 'distA', 'distB', 'gender', 'relGender', 'rootGender', 'side', 'order', 'lineMatch'];
+
+// An explicit fixed-field-order tuple, NOT a sorted-keys JSON.stringify of the
+// raw object — Firestore doesn't guarantee a map field's key order round-trips
+// identically to how it was written, so comparing by insertion order would be
+// unreliable for a signature read back from a saved rule.
+export function signatureFingerprint(signature) {
+  if (!signature) return null;
+  return JSON.stringify(SIGNATURE_FIELDS.map((f) => signature[f] ?? null));
 }
 
 let idCounter = 0;
