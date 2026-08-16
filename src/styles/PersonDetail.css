@@ -429,6 +429,20 @@
   color: #dc2626 !important;
 }
 
+/* "This is You ✓" — stands out from the other plain action buttons so it
+   reads as a confirmed state, not just another action to take. */
+.detail-action-active {
+  border-color: var(--color-primary) !important;
+  background: var(--color-primary) !important;
+  color: #fff !important;
+}
+
+@media (hover: hover) {
+  .detail-action-active:hover {
+    background: var(--color-primary-hover) !important;
+  }
+}
+
 @media (max-width: 640px) {
   .person-detail {
     top: auto;

@@ -567,10 +567,18 @@ function ancestorDistances(persons, id) {
 }
 
 const GREAT_PREFIXES = ['', 'Great-', 'Great-Great-'];
+// Every call site passes `n` as (distance - 2) and interpolates the result
+// into a template that already has ONE "Great-"/"Grand-" baked in (e.g.
+// `${prefix}Great-Grandfather`, `${prefix}Grand-Uncle`) — so n=1 (the
+// nearest case those templates handle, e.g. a great-grandparent) needs an
+// EMPTY prefix, not 'Great-', or it doubles up into "Great-Great-Grandfather"
+// for a plain great-grandparent. Shifting by 1 here (rather than fixing every
+// call site) keeps all of them correct in one place.
 function greatPrefix(n) {
-  if (n <= 0) return '';
-  if (n < GREAT_PREFIXES.length) return GREAT_PREFIXES[n];
-  return `${n}x-Great-`;
+  const extra = n - 1;
+  if (extra <= 0) return '';
+  if (extra < GREAT_PREFIXES.length) return GREAT_PREFIXES[extra];
+  return `${extra}x-Great-`;
 }
 
 function ordinal(n) {
@@ -642,6 +650,15 @@ function bloodLabel(persons, personId, rootId, male, female) {
 // person married INTO root's blood family: person's spouse is `dist`-related to root.
 // distSP/distRoot are the spouse's and root's distances to their common ancestor.
 function inLawTermMarriedIn(distSP, distRoot, male, female) {
+  // person's own spouse IS a direct ancestor of root (e.g. a grandfather's
+  // wife who isn't recorded as a blood parent herself) — was previously
+  // unhandled entirely, leaving the relationship badge blank.
+  if (distSP === 0) {
+    if (distRoot === 1) return male ? 'Father' : female ? 'Mother' : 'Parent';
+    if (distRoot === 2) return male ? 'Grandfather' : female ? 'Grandmother' : 'Grandparent';
+    const prefix = greatPrefix(distRoot - 2);
+    return male ? `${prefix}Great-Grandfather` : female ? `${prefix}Great-Grandmother` : `${prefix}Great-Grandparent`;
+  }
   if (distRoot === 0) {
     if (distSP === 1) return male ? 'Son-in-law' : female ? 'Daughter-in-law' : 'Child-in-law';
     if (distSP === 2) return male ? 'Grandson-in-law' : female ? 'Granddaughter-in-law' : 'Grandchild-in-law';
@@ -654,12 +671,14 @@ function inLawTermMarriedIn(distSP, distRoot, male, female) {
     const prefix = greatPrefix(distRoot - 2);
     return male ? `${prefix}Grand-Uncle-in-law` : female ? `${prefix}Grand-Aunt-in-law` : `${prefix}Grand-Aunt/Uncle-in-law`;
   }
-  // A cousin's own spouse (any degree) — was previously unhandled, which left
-  // the relationship badge blank even once a Tamil term for the same relation
-  // (Anni/Mama/Akka/Thangai/Anna/Thambi — see tamilInLawLabel) existed, since
-  // PersonDetail only shows the badge at all when this English label resolves.
-  if (distSP === distRoot && distSP >= 2) {
-    const label = `${ordinal(distSP - 1)} Cousin`;
+  // A cousin's own spouse (any degree), or the spouse of a grand-uncle/aunt's
+  // child playing that same cousin role one generation further removed (see
+  // tamilRemovedUncleAuntPairTerm) — both were previously unhandled, which
+  // left the relationship badge blank even once a Tamil term for the same
+  // relation (Anni/Mama/Chithi/Periyamma/...) existed, since PersonDetail
+  // only shows the badge at all when this English label resolves.
+  if (distSP >= 2 && (distSP === distRoot || distSP === distRoot - 1)) {
+    const label = `${ordinal(Math.min(distSP, distRoot) - 1)} Cousin`;
     return male ? `${label}'s Husband` : female ? `${label}'s Wife` : `${label}'s Spouse`;
   }
   return null;
@@ -826,13 +845,19 @@ function tamilConnectingChild(persons, ancestorId, descendantId, totalDist) {
 // child, "if older/younger than Father" — see tamilRemovedUncleAuntPairTerm),
 // where the elder/younger check needs to land on referenceId's GRANDPARENT
 // instead of their parent.
-function tamilUncleAuntPairTerm(persons, referenceId, ancestorId, bloodRelativeId, personGender, refDistance = 2) {
+// `sideGenderOverride` lets the removed-uncle/aunt case (below) decide
+// same-side/cross-side from the ACTUAL person being addressed rather than
+// bloodRelativeId — a blood female one generation up is always Athai (never
+// Periyamma/Chithi, which is reserved for a wife married IN to that role),
+// matching how a direct father's-sister is Athai purely because SHE is
+// female, regardless of her own brother's side.
+function tamilUncleAuntPairTerm(persons, referenceId, ancestorId, bloodRelativeId, personGender, refDistance = 2, sideGenderOverride = null) {
   const bloodRelative = getPerson(persons, bloodRelativeId);
   if (!bloodRelative) return null;
   const side = tamilSideFromRoot(persons, referenceId, ancestorId);
   const connectingParent = tamilConnectingChild(persons, ancestorId, referenceId, refDistance);
   const order = connectingParent ? tamilBirthOrder(persons, ancestorId, bloodRelativeId, connectingParent) : null;
-  const bloodGender = bloodRelative.gender;
+  const bloodGender = sideGenderOverride || bloodRelative.gender;
 
   const sameSide = (side === 'paternal' && bloodGender === 'male') || (side === 'maternal' && bloodGender === 'female');
   const crossSide = (side === 'paternal' && bloodGender === 'female') || (side === 'maternal' && bloodGender === 'male');
@@ -853,20 +878,23 @@ function tamilUncleAuntPairTerm(persons, referenceId, ancestorId, bloodRelativeI
 
 // Grand-uncle/aunt's child (English "1st cousin once removed") — Tamil treats
 // them with the SAME Periyappa/Chithappa/Periyamma/Chithi/Mama/Athai words as a
-// direct uncle/aunt, one generation further removed: `personId`'s PARENT (the
-// grand-uncle/aunt) plays the role `tamilUncleAuntPairTerm` normally uses the
-// direct uncle/aunt themselves for — their side/gender decides which pair
-// applies, personId's OWN gender picks which half of it. The elder/younger
-// split compares that grand-uncle/aunt against root's own GRANDPARENT (their
-// actual recorded sibling, sharing `ancestorId` as a parent) rather than
-// against root's parent directly, since that's the nearest pair the data can
-// actually compare — colloquially this is described as "older/younger than
-// your father", since the grandparent and grand-uncle/aunt's birth order tracks
-// the same distinction a family would actually use to address them.
+// direct uncle/aunt, one generation further removed. `personId` is always the
+// actual blood descendant of the grand-uncle/aunt (either the person we want
+// the word FOR directly, or — when called for their spouse — whoever plays
+// that blood role, e.g. a "removed Chithappa"'s own wife); their OWN gender
+// decides which pair applies (a blood female up here is always Athai, never
+// Periyamma/Chithi — see tamilUncleAuntPairTerm's sideGenderOverride),
+// `personGender` just picks which half of it to return. The elder/younger
+// split still compares personId's PARENT — the actual grand-uncle/aunt
+// (`connectingSibling`) — against root's own GRANDPARENT (their real recorded
+// sibling, sharing `ancestorId`), since personId themselves can't be directly
+// compared against a generation they don't belong to; colloquially this is
+// "older/younger than your father", the nearest pair the data can compare.
 function tamilRemovedUncleAuntPairTerm(persons, rootId, ancestorId, personId, personGender) {
   const connectingSibling = tamilConnectingChild(persons, ancestorId, personId, 2);
   if (!connectingSibling) return null;
-  return tamilUncleAuntPairTerm(persons, rootId, ancestorId, connectingSibling, personGender, 3);
+  const targetGender = getPerson(persons, personId)?.gender ?? null;
+  return tamilUncleAuntPairTerm(persons, rootId, ancestorId, connectingSibling, personGender, 3, targetGender);
 }
 
 function tamilBloodLabelFromDistances(persons, personId, rootId, distPerson, distRoot, male, female, ancestorId) {
@@ -988,6 +1016,17 @@ function tamilInLawTermMarriedIn(distSP, distRoot, male, female) {
   return male ? 'தொலைவு மாப்பிள்ளை' : female ? 'தொலைவு மருமகள்' : 'தொலைவு மணமகன்/மகள்';
 }
 
+// person's own spouse IS a direct ancestor of root (e.g. a grandfather's wife
+// who isn't recorded as a blood parent herself — the exact gap that left
+// Sundarambal's badge blank) — same அப்பா/அம்மா/தாத்தா/பாட்டி words a real
+// blood ancestor at that generation would get.
+function tamilAncestorSpouseTerm(distRoot, male, female) {
+  if (distRoot === 1) return male ? 'அப்பா' : female ? 'அம்மா' : 'பெற்றோர்';
+  if (distRoot === 2) return male ? 'தாத்தா' : female ? 'பாட்டி' : 'பாட்டன்/பாட்டி';
+  if (distRoot === 3) return male ? 'கொள்ளுத்தாத்தா' : female ? 'கொள்ளுப்பாட்டி' : 'கொள்ளுத்தாத்தா/பாட்டி';
+  return `${distRoot - 2}x கொள்ளுத்தாத்தா/பாட்டி`;
+}
+
 // Shared Anni/Marumagal/Mama/Maapillai term table for anyone treated as a
 // sibling of root — a real direct sibling, or a parallel (same-side) 1st
 // cousin, which Tamil also addresses with sibling terms (see the parallel-
@@ -1095,7 +1134,9 @@ function tamilInLawLabel(persons, personId, rootId, male, female) {
     if (ca && spouse) {
       const { distA: distSP, distB: distRoot, ancestorId } = ca;
       let term = null;
-      if (distRoot === 0) {
+      if (distSP === 0) {
+        term = tamilAncestorSpouseTerm(distRoot, male, female);
+      } else if (distRoot === 0) {
         term = tamilInLawTermMarriedIn(distSP, distRoot, male, female);
       } else if (distRoot === 1 && distSP === 1) {
         term = tamilSiblingSpouseTerm(persons, ancestorId, rootId, person.spouseId, personGender);
@@ -1121,6 +1162,12 @@ function tamilInLawLabel(persons, personId, rootId, male, female) {
             term = tamilCrossCousinSpouseTerm(persons, personId, rootId, spouse.gender);
           }
         }
+      } else if (distSP === 2 && distRoot === 3) {
+        // person's spouse plays a Periyappa/Chithappa role one generation
+        // further removed (a grand-uncle/aunt's own child) — reuses the same
+        // Periyamma/Chithi-Sinnamma pattern a direct uncle/aunt's wife gets,
+        // via tamilRemovedUncleAuntPairTerm's own side/order comparison.
+        term = tamilRemovedUncleAuntPairTerm(persons, rootId, ancestorId, person.spouseId, personGender);
       }
       if (term) candidates.push({ term, cost: distSP + distRoot });
     }

@@ -154,3 +154,27 @@
     color: var(--color-primary);
   }
 }
+
+/* The one forward-moving action on this step ("my name isn't listed") —
+   styled as a real button, unlike the plain-text .attach-back-btn links used
+   everywhere else in this wizard, so it doesn't read as a dim afterthought. */
+.attach-forward-btn {
+  align-self: flex-start;
+  margin-top: 4px;
+  padding: 8px 14px;
+  border: 1.5px solid var(--color-primary);
+  border-radius: var(--radius-pill, 999px);
+  background: transparent;
+  color: var(--color-primary);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--duration-fast, 120ms) ease, color var(--duration-fast, 120ms) ease;
+}
+
+@media (hover: hover) {
+  .attach-forward-btn:hover {
+    background: var(--color-primary);
+    color: #fff;
+  }
+}

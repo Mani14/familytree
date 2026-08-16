@@ -67,7 +67,7 @@ export default function AttachYourself({ persons, onAttach, onMarkAsMe, onCancel
           </ul>
         )}
         {query.trim() && matches.length === 0 && <p className="attach-step-empty">No matches found.</p>}
-        <button type="button" className="attach-back-btn" onClick={() => goToStage('searchRelative')}>
+        <button type="button" className="attach-forward-btn" onClick={() => goToStage('searchRelative')}>
           My name isn't listed →
         </button>
       </div>

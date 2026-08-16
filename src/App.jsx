@@ -193,14 +193,28 @@ export default function App() {
     // instead of following the new root.
     setFocusId(selectedId);
     setViewMode('pedigree');
+    // Otherwise the panel stays open covering the very tree you just switched to.
+    setSelectedId(null);
   }, [selectedId, setMyRoot]);
 
   const closeDetail = useCallback(() => setSelectedId(null), []);
   const closeForm = useCallback(() => setFormState(null), []);
 
+  // PersonDetail's own "View Tree" button — unlike the canvas's blue
+  // "Jump to their family" arrow (which deliberately leaves the detail panel
+  // open, see handleJumpToFamily above), clicking this should close the
+  // panel so the tree it just switched to is actually visible, not still
+  // covered by the panel.
+  const handleViewTreeFromDetail = useCallback((id) => {
+    handleJumpToFamily(id);
+    closeDetail();
+  }, [handleJumpToFamily, closeDetail]);
+
   const highlightedIds = useMemo(() => new Set(highlightedChain), [highlightedChain]);
   const handleHighlightLineage = useCallback((id) => {
     setHighlightedChain(getAncestorChain(persons, id));
+    // Otherwise the panel stays open covering the very lineage it just highlighted.
+    setSelectedId(null);
   }, [persons]);
   const handleClearHighlight = useCallback(() => {
     clearTimeout(travelTimerRef.current);
@@ -974,7 +988,7 @@ export default function App() {
               onAddSibling={() => setFormState({ mode: 'addSibling', personId: selected.id })}
               onDelete={() => handleDelete(selected.id)}
               onSetRoot={handleSetAsRoot}
-              onViewTree={handleJumpToFamily}
+              onViewTree={handleViewTreeFromDetail}
               onUnlinkSpouse={handleUnlinkSpouse}
               onUnlinkParent={handleUnlinkParent}
               onUnlinkChild={handleUnlinkChild}

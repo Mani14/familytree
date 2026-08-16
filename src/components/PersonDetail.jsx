@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion, Reorder, useDragControls } from 'framer-motion';
-import { BadgeCheck, Baby, Briefcase, Cake, ChevronDown, ChevronUp, Crown, GitBranch, GripVertical, HeartHandshake, Mail, MapPin, PartyPopper, Pencil, Phone, Route, Sparkles, Trash2, UserPlus, Users, X, XCircle } from 'lucide-react';
+import { BadgeCheck, Baby, Briefcase, Cake, ChevronDown, ChevronUp, Eye, GitBranch, GripVertical, HeartHandshake, Mail, MapPin, PartyPopper, Pencil, Phone, Route, Sparkles, Trash2, UserPlus, Users, X, XCircle } from 'lucide-react';
 import {
   formatBirthdayNoYear,
   formatDateDisplay,
@@ -357,8 +357,8 @@ export default function PersonDetail({
           <button type="button" onClick={() => onViewTree(person.id)}><GitBranch size={14} /> View Tree</button>
         )}
         {!isRoot && (
-          <button type="button" onClick={onSetRoot} title="Makes this person the default starting view for everyone">
-            <Crown size={14} /> Set as Root
+          <button type="button" onClick={onSetRoot} title="Makes this your own starting view when you open the tree — doesn't change anyone else's view">
+            <Eye size={14} /> View as this person
           </button>
         )}
         {isHighlighted ? (
@@ -370,7 +370,11 @@ export default function PersonDetail({
           <button type="button" onClick={() => onFindConnection(person.id)}><Route size={14} /> Find Connection</button>
         )}
         {onSetMe && (
-          <button type="button" onClick={() => onSetMe(isMe ? null : person.id)}>
+          <button
+            type="button"
+            className={isMe ? 'detail-action-active' : ''}
+            onClick={() => onSetMe(isMe ? null : person.id)}
+          >
             <BadgeCheck size={14} /> {isMe ? 'This is You ✓' : 'Mark as Me'}
           </button>
         )}
