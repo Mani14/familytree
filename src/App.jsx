@@ -915,7 +915,9 @@ export default function App() {
         </div>
       )}
 
-      {appSettings.features.birthdayWidget && <BirthdayWidget persons={persons} onSelect={handleViewPersonDetails} />}
+      {appSettings.features.birthdayWidget && (
+        <BirthdayWidget persons={persons} onSelect={handleViewPersonDetails} windowDays={appSettings.birthdayWindowDays} />
+      )}
       {appSettings.features.anniversaryWidget && <AnniversaryWidget persons={persons} onSelect={handleViewPersonDetails} />}
 
       <main className="app-main">

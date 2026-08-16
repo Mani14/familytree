@@ -125,6 +125,20 @@ export default function AdminPanel({
           />
         </label>
         <label className="admin-row">
+          <span>Birthday reminder window (days in advance)</span>
+          <input
+            type="number"
+            min="1"
+            max="365"
+            value={settings.birthdayWindowDays}
+            onChange={(e) => {
+              const value = Number(e.target.value);
+              if (Number.isNaN(value)) return;
+              handleUpdateSettings({ birthdayWindowDays: Math.min(365, Math.max(1, value)) });
+            }}
+          />
+        </label>
+        <label className="admin-row">
           <span>Anniversary reminders</span>
           <input
             type="checkbox"

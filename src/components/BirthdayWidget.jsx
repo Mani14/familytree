@@ -3,10 +3,10 @@ import { useMemo, useState } from 'react';
 import { getDaysUntilBirthday, getFullName } from '../utils/familyUtils';
 import '../styles/BirthdayWidget.css';
 
-const WINDOW_DAYS = 30;
+const DEFAULT_WINDOW_DAYS = 30;
 const DISMISS_KEY = 'family-hierarchy-birthday-dismissed';
 
-export default function BirthdayWidget({ persons, onSelect }) {
+export default function BirthdayWidget({ persons, onSelect, windowDays = DEFAULT_WINDOW_DAYS }) {
   const [dismissed, setDismissed] = useState(() => sessionStorage.getItem(DISMISS_KEY) === '1');
 
   const upcoming = useMemo(() => {
@@ -14,9 +14,9 @@ export default function BirthdayWidget({ persons, onSelect }) {
     return Object.values(persons)
       .filter((person) => person.isAlive)
       .map((person) => ({ person, days: getDaysUntilBirthday(person.dob, today) }))
-      .filter((entry) => entry.days != null && entry.days <= WINDOW_DAYS)
+      .filter((entry) => entry.days != null && entry.days <= windowDays)
       .sort((a, b) => a.days - b.days);
-  }, [persons]);
+  }, [persons, windowDays]);
 
   if (dismissed || upcoming.length === 0) return null;
 

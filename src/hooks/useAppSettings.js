@@ -6,6 +6,7 @@ const SETTINGS_DOC = ['settings', 'app'];
 
 const DEFAULTS = {
   defaultTheme: 'light',
+  birthdayWindowDays: 30,
   features: { familyMap: true, birthdayWidget: true, anniversaryWidget: true, showAges: true },
 };
 
