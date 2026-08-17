@@ -2,6 +2,43 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+  max-height: 78vh;
+  overflow-y: auto;
+}
+
+.relationship-rules-section + .relationship-rules-section {
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border);
+}
+
+.relationship-rules-section-title {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.relationship-rules-reference {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.relationship-rules-group-title {
+  margin: 0 0 6px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+/* Lists nested inside the grouped reference table scroll as ONE region (the
+   panel's own overflow, set above) rather than each small category list
+   getting its own independent 55vh scrollbar. */
+.relationship-rules-reference .relationship-rules-list {
+  max-height: none;
+  overflow: visible;
 }
 
 .relationship-rules-panel h2 {
@@ -93,6 +130,28 @@
   .relationship-rules-remove:hover {
     border-color: #dc2626;
     background: rgba(220, 38, 38, 0.08);
+  }
+}
+
+.relationship-rules-edit {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+  background: var(--color-surface);
+  color: var(--color-primary);
+  cursor: pointer;
+  transition: border-color var(--duration-fast) var(--ease), background var(--duration-fast) var(--ease);
+}
+
+@media (hover: hover) {
+  .relationship-rules-edit:hover {
+    border-color: var(--color-primary);
+    background: var(--color-primary-soft, var(--color-bg));
   }
 }
 

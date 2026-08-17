@@ -251,6 +251,17 @@ export default function App() {
     setEditRelationshipState({ personId, anchorId, signature, currentTerm, baseRelationship });
   }, []);
 
+  // Same dialog, triggered from RelationshipRulesPanel's "All Relationships"
+  // reference table instead of a live person's badge — no real personId/
+  // anchorId here (the row's signature came from a synthetic sample family,
+  // see relationshipReference.js), so handleSaveRelationshipOverride's own
+  // getPerson(persons, undefined) lookups below just resolve to null and it
+  // falls back to the row's own description as the label, exactly as intended.
+  const handleEditReference = useCallback((signature, currentTerm, description) => {
+    setRelationshipRuleError(null);
+    setEditRelationshipState({ personId: undefined, anchorId: undefined, signature, currentTerm, baseRelationship: description });
+  }, []);
+
   const handleSaveRelationshipOverride = useCallback((term) => {
     if (!editRelationshipState) return;
     const { personId, anchorId, signature, baseRelationship } = editRelationshipState;
@@ -1137,6 +1148,7 @@ export default function App() {
         isOpen={showRelationshipRules}
         onClose={() => { setShowRelationshipRules(false); setRelationshipRuleError(null); }}
         onRemove={handleRemoveRelationshipOverride}
+        onEditReference={handleEditReference}
         error={relationshipRuleError}
       />
 

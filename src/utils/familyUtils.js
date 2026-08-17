@@ -734,6 +734,11 @@ function inLawLabel(persons, personId, rootId, male, female) {
     if (ca3 && ca3.distA === 1 && ca3.distB === 1) {
       candidates.push({ term: male ? 'Brother-in-law' : female ? 'Sister-in-law' : 'Sibling-in-law', cost: 3 });
     }
+    // person's own spouse is uncle/aunt-level blood-related to root's own
+    // spouse (e.g. Vanaja, married to Soundari's husband's mother's brother).
+    if (ca3 && ca3.distA === 1 && ca3.distB === 2) {
+      candidates.push({ term: male ? 'Uncle-in-law' : female ? 'Aunt-in-law' : 'Aunt/Uncle-in-law', cost: 4 });
+    }
   }
   if (tamilIsSambandhi(persons, personId, rootId) || tamilIsSambandhi(persons, rootId, personId)) {
     candidates.push({ term: 'Co-parent-in-law', cost: 4 });
@@ -851,10 +856,29 @@ function tamilConnectingChild(persons, ancestorId, descendantId, totalDist) {
 // Periyamma/Chithi, which is reserved for a wife married IN to that role),
 // matching how a direct father's-sister is Athai purely because SHE is
 // female, regardless of her own brother's side.
-function tamilUncleAuntPairTerm(persons, referenceId, ancestorId, bloodRelativeId, personGender, refDistance = 2, sideGenderOverride = null) {
+// `useThaiMama` upgrades a maternal cross-uncle to 'தாய் மாமா' — but ONLY
+// correct when `referenceId` is root's OWN family (side is being measured
+// relative to root's own parentage, so this really is root's own mother's
+// brother). The exact same function, with `referenceId = root.spouseId`,
+// also computes root's SPOUSE's uncle (e.g. a mother-in-law's brother) —
+// those call sites leave this false and never get the "MY mother's brother"
+// wording.
+// `invertSide` — for THOSE same root.spouseId call sites, the paternal/
+// maternal classification itself flips relative to what the spouse's OWN
+// blood family would use: a spouse's mother's BROTHER (cross to the spouse,
+// e.g. Kesavamoorthy to Velmurugan = Mama) is addressed by the person who
+// MARRIED IN as if paternal-side instead (Periyappa/Chithappa to Soundari);
+// a spouse's mother's SISTER (same-side to the spouse, e.g. Amutha to
+// Velmurugan = Chithi) flips the other way (Athai to Soundari). This mirrors
+// the classificatory-kinship logic already used throughout this file for
+// cross-cousin marriage (the family you marry into sits on the "opposite"
+// side from your spouse's own perspective) — confirmed against both of the
+// examples above, not a guess for just one of them.
+function tamilUncleAuntPairTerm(persons, referenceId, ancestorId, bloodRelativeId, personGender, refDistance = 2, sideGenderOverride = null, useThaiMama = false, invertSide = false) {
   const bloodRelative = getPerson(persons, bloodRelativeId);
   if (!bloodRelative) return null;
-  const side = tamilSideFromRoot(persons, referenceId, ancestorId);
+  let side = tamilSideFromRoot(persons, referenceId, ancestorId);
+  if (invertSide && side) side = side === 'paternal' ? 'maternal' : 'paternal';
   const connectingParent = tamilConnectingChild(persons, ancestorId, referenceId, refDistance);
   const order = connectingParent ? tamilBirthOrder(persons, ancestorId, bloodRelativeId, connectingParent) : null;
   const bloodGender = sideGenderOverride || bloodRelative.gender;
@@ -863,9 +887,10 @@ function tamilUncleAuntPairTerm(persons, referenceId, ancestorId, bloodRelativeI
   const crossSide = (side === 'paternal' && bloodGender === 'female') || (side === 'maternal' && bloodGender === 'male');
 
   if (crossSide) {
-    if (personGender === 'male') return 'மாமா';
+    const thaiMama = useThaiMama && side === 'maternal';
+    if (personGender === 'male') return thaiMama ? 'தாய் மாமா' : 'மாமா';
     if (personGender === 'female') return 'அத்தை';
-    return 'மாமா/அத்தை';
+    return thaiMama ? 'தாய் மாமா/அத்தை' : 'மாமா/அத்தை';
   }
   if (sameSide) {
     if (order === 'elder') return personGender === 'male' ? 'பெரியப்பா' : personGender === 'female' ? 'பெரியம்மா' : 'பெரியப்பா/பெரியம்மா';
@@ -894,7 +919,10 @@ function tamilRemovedUncleAuntPairTerm(persons, rootId, ancestorId, personId, pe
   const connectingSibling = tamilConnectingChild(persons, ancestorId, personId, 2);
   if (!connectingSibling) return null;
   const targetGender = getPerson(persons, personId)?.gender ?? null;
-  return tamilUncleAuntPairTerm(persons, rootId, ancestorId, connectingSibling, personGender, 3, targetGender);
+  // Both of this function's own call sites always pass rootId itself as the
+  // reference (never root.spouseId) — this removed uncle/aunt is always on
+  // ROOT'S OWN side, so the Thai-Mama upgrade is always safe here.
+  return tamilUncleAuntPairTerm(persons, rootId, ancestorId, connectingSibling, personGender, 3, targetGender, true);
 }
 
 function tamilBloodLabelFromDistances(persons, personId, rootId, distPerson, distRoot, male, female, ancestorId) {
@@ -993,7 +1021,9 @@ function tamilBloodLabelFromDistances(persons, personId, rootId, distPerson, dis
   }
   // distPerson < distRoot: person is root's parent's sibling (uncle/aunt) or further.
   if (distPerson === 1 && distRoot === 2) {
-    return tamilUncleAuntPairTerm(persons, rootId, ancestorId, personId, male ? 'male' : female ? 'female' : null);
+    // rootId itself is the reference here — root's own direct blood uncle/
+    // aunt — so the Thai-Mama upgrade is safe (see tamilUncleAuntPairTerm).
+    return tamilUncleAuntPairTerm(persons, rootId, ancestorId, personId, male ? 'male' : female ? 'female' : null, 2, null, true);
   }
   // Grand-uncle/aunt's child (1st cousin once removed) — same Periyappa/
   // Chithappa/Periyamma/Chithi/Mama/Athai pattern as a direct uncle/aunt.
@@ -1194,7 +1224,10 @@ function tamilInLawLabel(persons, personId, rootId, male, female) {
           if (personGender === 'female') term = 'நாத்தனார்';
         }
       } else if (distPersonToAnc === 1 && distRS === 2) {
-        term = tamilUncleAuntPairTerm(persons, root.spouseId, ancestorId, personId, personGender);
+        // invertSide=true — see tamilUncleAuntPairTerm's own comment: a
+        // spouse's maternal uncle is addressed as if paternal-side (Mama ->
+        // Periyappa/Chithappa) and vice versa, once you've married in.
+        term = tamilUncleAuntPairTerm(persons, root.spouseId, ancestorId, personId, personGender, 2, null, false, true);
       } else if (distPersonToAnc === 1 && distRS > 2) {
         term = personGender === 'male' ? 'தொலைவு மாமா' : personGender === 'female' ? 'தொலைவு அத்தை' : null;
       } else if (distPersonToAnc === 2 && distRS === 1) {
@@ -1219,6 +1252,16 @@ function tamilInLawLabel(persons, personId, rootId, male, female) {
     if (root.gender === 'male' && inLawSibling?.gender === 'female' && ca3 && ca3.distA === 1 && ca3.distB === 1) {
       const order = tamilBirthOrder(persons, ca3.ancestorId, person.spouseId, root.spouseId);
       if (order === 'elder') candidates.push({ term: 'அண்ணன்', cost: 3 });
+    }
+    // person's own spouse is UNCLE/AUNT-level blood-related to root's own
+    // spouse (e.g. Vanaja, married to Kesavamoorthy who is Soundari's
+    // husband's mother's brother) — mirrors the direct "root's spouse's
+    // uncle/aunt" branch above (distPersonToAnc===1 && distRS===2), one
+    // marriage hop further via person's own spouse. Was previously
+    // unhandled entirely, leaving the badge blank.
+    if (ca3 && ca3.distA === 1 && ca3.distB === 2) {
+      const term4 = tamilUncleAuntPairTerm(persons, root.spouseId, ca3.ancestorId, person.spouseId, personGender, 2, null, false, true);
+      if (term4) candidates.push({ term: term4, cost: ca3.distA + ca3.distB + 1 });
     }
   }
 
@@ -1257,6 +1300,28 @@ export function getRelationshipLabelTamil(persons, personId, rootId, overrides =
     const signature = getRelationshipSignature(persons, personId, rootId);
     const hit = signature && overrides.find((o) => o.signature && signatureFingerprint(o.signature) === signatureFingerprint(signature));
     if (hit) return hit.term;
+
+    // Dynamic pairing: personId is the MARRIED-IN half of an uncle/aunt pair
+    // (an uncle's wife, or Vanaja married to root's spouse's uncle) — if the
+    // BLOOD half has its own rule (e.g. Mama -> Periyappa), mirror it through
+    // the pair table so the wife follows automatically (-> Periyamma)
+    // without needing a second rule. See UNCLE_AUNT_PAIR_MAP's own comment
+    // for why this is scoped to only these unambiguous words.
+    const bloodHalfKind = signature && BLOOD_HALF_KIND[signature.kind];
+    if (bloodHalfKind && signature.side != null && signature.relGender) {
+      const bloodSignature2 = fillSignature(bloodHalfKind, {
+        distA: signature.distA,
+        distB: signature.distB,
+        side: signature.side,
+        order: signature.order,
+        rootGender: signature.rootGender,
+        gender: signature.relGender,
+      });
+      const bloodFp = signatureFingerprint(bloodSignature2);
+      const bloodHit = overrides.find((o) => o.signature && signatureFingerprint(o.signature) === bloodFp);
+      const mapped = bloodHit && UNCLE_AUNT_PAIR_MAP[bloodHit.term];
+      if (mapped) return mapped;
+    }
   }
 
   const male = person.gender === 'male';
@@ -1302,6 +1367,35 @@ function fillSignature(kind, fields = {}) {
     lineMatch: fields.lineMatch ?? null,
   };
 }
+
+// Dynamic pairing for the uncle/aunt word family — if someone corrects the
+// BLOOD half of a pair (e.g. Mama -> Periyappa), their spouse's term should
+// follow automatically (Athai -> Periyamma) without a separate rule. Scoped
+// deliberately narrow: only these unambiguous, single-purpose words — NOT
+// Thambi/Marumagal or Thangai/Maapillai, which mean different things in
+// OTHER contexts (e.g. an actual daughter-in-law) and would false-match if
+// used as a blind reverse-lookup table here.
+const UNCLE_AUNT_PAIR_MAP = {
+  'மாமா': 'அத்தை',
+  'அத்தை': 'மாமா',
+  'தாய் மாமா': 'அத்தை',
+  'பெரியப்பா': 'பெரியம்மா',
+  'பெரியம்மா': 'பெரியப்பா',
+  'சித்தப்பா': 'சித்தி/சின்னம்மா',
+  'சித்தி/சின்னம்மா': 'சித்தப்பா',
+  'சின்னம்மா': 'சித்தப்பா',
+};
+
+// Maps "the married-in half's" kind to "the blood/directly-related half's"
+// kind for the SAME uncle/aunt shape — e.g. an uncle's wife (inlaw-married-in)
+// pairs with the uncle himself (blood); Vanaja (inlaw-co-spouse-uncle) pairs
+// with Kesavamoorthy (inlaw-spouse-kin). Only defined for kinds that can
+// represent an uncle/aunt shape (checked via `side !== null` at the call site
+// below, since these kinds ALSO cover non-uncle/aunt shapes).
+const BLOOD_HALF_KIND = {
+  'inlaw-married-in': 'blood',
+  'inlaw-co-spouse-uncle': 'inlaw-spouse-kin',
+};
 
 // Mirrors tamilBloodLabelFromDistances' own branches 1:1 (see that function
 // for the reasoning behind each — comments aren't repeated here).
@@ -1441,7 +1535,10 @@ function inLawSpouseKinSignature(persons, personId, rootId, ca, gender) {
     return fillSignature('inlaw-spouse-kin', { distA: distPersonToAnc, distB: distRS, gender, rootGender: root.gender ?? null, order });
   }
   if (distPersonToAnc === 1 && distRS === 2) {
-    const side = tamilSideFromRoot(persons, root.spouseId, ancestorId);
+    // Inverted to match tamilUncleAuntPairTerm's own invertSide — a spouse's
+    // maternal uncle is addressed as if paternal-side once you've married in.
+    let side = tamilSideFromRoot(persons, root.spouseId, ancestorId);
+    if (side) side = side === 'paternal' ? 'maternal' : 'paternal';
     const connectingParent = tamilConnectingChild(persons, ancestorId, root.spouseId, 2);
     const order = connectingParent ? tamilBirthOrder(persons, ancestorId, personId, connectingParent) : null;
     return fillSignature('inlaw-spouse-kin', { distA: distPersonToAnc, distB: distRS, gender, side, order });
@@ -1501,6 +1598,19 @@ export function getRelationshipSignature(persons, personId, rootId) {
           cost: 3,
         });
       }
+    }
+    // Mirrors the new uncle/aunt-level co-spouse branch in tamilInLawLabel
+    // (e.g. Vanaja, married to root's spouse's mother's brother) — side
+    // inverted the same way tamilUncleAuntPairTerm's invertSide is.
+    if (ca && ca.distA === 1 && ca.distB === 2) {
+      let side = tamilSideFromRoot(persons, root.spouseId, ca.ancestorId);
+      if (side) side = side === 'paternal' ? 'maternal' : 'paternal';
+      const connectingParent = tamilConnectingChild(persons, ca.ancestorId, root.spouseId, 2);
+      const order = connectingParent ? tamilBirthOrder(persons, ca.ancestorId, person.spouseId, connectingParent) : null;
+      candidates.push({
+        sig: fillSignature('inlaw-co-spouse-uncle', { distA: 1, distB: 2, gender, relGender: inLawSibling?.gender ?? null, side, order }),
+        cost: 4,
+      });
     }
   }
 
