@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Route, Send } from 'lucide-react';
 import { getDisplayName } from '../utils/familyUtils';
-import { answerQuery } from '../utils/naturalQuery';
+import { parseQuery, resolveAnswer } from '../utils/naturalQuery';
 import Modal from './Modal';
 import '../styles/AskPanel.css';
 
@@ -11,7 +11,7 @@ const EXAMPLES = [
   "Who are Kesavamoorthy's children?",
 ];
 
-function AnswerBody({ result, onGo, onShowTree }) {
+function AnswerBody({ result, onGo, onShowTree, onResolveAmbiguous }) {
   if (result.kind === 'error') {
     return <p className="ask-panel-error">{result.message}</p>;
   }
@@ -23,7 +23,12 @@ function AnswerBody({ result, onGo, onShowTree }) {
         <ul className="ask-panel-people">
           {result.candidates.map((p) => (
             <li key={p.id}>
-              <button type="button" onClick={() => onGo(p.id)}>{getDisplayName(p)}</button>
+              {/* Answers the ORIGINAL question with this person picked for the
+                  ambiguous slot — not a plain "go to their card" link, or
+                  disambiguating would just abandon the question you asked. */}
+              <button type="button" onClick={() => onResolveAmbiguous(result.slot, p.id)}>
+                {getDisplayName(p)}
+              </button>
             </li>
           ))}
         </ul>
@@ -91,23 +96,45 @@ function AnswerBody({ result, onGo, onShowTree }) {
 export default function AskPanel({ persons, isOpen, onClose, onSelectPerson, onShowConnection }) {
   const [query, setQuery] = useState('');
   // Most-recent-first session log — not persisted, just lets someone ask a
-  // follow-up without losing the previous answer off-screen.
+  // follow-up without losing the previous answer off-screen. Each entry gets
+  // a stable id (not just its array position) since prepending shifts every
+  // existing entry's index on every new question.
   const [history, setHistory] = useState([]);
+  const nextEntryId = useRef(0);
+
+  // Runs resolveAnswer defensively — no error boundary sits above this panel,
+  // so an uncaught exception here would otherwise take the whole app down
+  // with it, not just this modal.
+  const safeResolve = (parsed, chosen) => {
+    try {
+      return resolveAnswer(persons, parsed, chosen);
+    } catch (err) {
+      console.error('AskPanel: resolveAnswer threw', err);
+      return { kind: 'error', message: 'Something went wrong answering that — try rephrasing it.' };
+    }
+  };
 
   const ask = (text) => {
     const trimmed = text.trim();
     if (!trimmed) return;
-    // No error boundary sits above this panel — an uncaught exception here
-    // would otherwise take the whole app down with it, not just this modal.
-    let result;
-    try {
-      result = answerQuery(persons, trimmed);
-    } catch (err) {
-      console.error('AskPanel: answerQuery threw', err);
-      result = { kind: 'error', message: "Something went wrong answering that — try rephrasing it." };
-    }
-    setHistory((prev) => [{ question: trimmed, result }, ...prev]);
+    const parsed = parseQuery(trimmed);
+    const chosen = {};
+    const entry = { id: nextEntryId.current++, question: trimmed, parsed, chosen, result: safeResolve(parsed, chosen) };
+    setHistory((prev) => [entry, ...prev]);
     setQuery('');
+  };
+
+  // Picking a disambiguation candidate re-answers the SAME question with that
+  // person pinned to the ambiguous slot, rather than just navigating to their
+  // card — a "how is Ilan related to X" question that turned out ambiguous
+  // should still end up answered once you say which Ilan you meant, not
+  // abandoned in favour of a detail panel.
+  const resolveAmbiguous = (entryId, slot, personId) => {
+    setHistory((prev) => prev.map((entry) => {
+      if (entry.id !== entryId) return entry;
+      const chosen = { ...entry.chosen, [slot]: personId };
+      return { ...entry, chosen, result: safeResolve(entry.parsed, chosen) };
+    }));
   };
 
   const go = (id) => {
@@ -153,10 +180,15 @@ export default function AskPanel({ persons, isOpen, onClose, onSelectPerson, onS
         </div>
       ) : (
         <ul className="ask-panel-history">
-          {history.map((entry, index) => (
-            <li key={index} className="ask-panel-entry">
+          {history.map((entry) => (
+            <li key={entry.id} className="ask-panel-entry">
               <p className="ask-panel-question">{entry.question}</p>
-              <AnswerBody result={entry.result} onGo={go} onShowTree={showTree} />
+              <AnswerBody
+                result={entry.result}
+                onGo={go}
+                onShowTree={showTree}
+                onResolveAmbiguous={(slot, personId) => resolveAmbiguous(entry.id, slot, personId)}
+              />
             </li>
           ))}
         </ul>

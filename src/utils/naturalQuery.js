@@ -120,27 +120,41 @@ export function findPersonMatches(persons, nameText) {
 const HELP_MESSAGE =
   'Try "How is X related to Y?" or "Who are X\'s cousins?" — first/last names both work.';
 
-// Orchestrates parseQuery + findPersonMatches + the relationship engine into
-// one of a few result kinds the UI can render directly:
+// A name slot pinned to one specific id (see resolveAnswer's `chosen` param)
+// skips findPersonMatches entirely — used when the caller already resolved an
+// earlier ambiguity ("did you mean Ilan Velmurugan or Ilango Unknown?") and is
+// re-answering the SAME question with that pick locked in, rather than a
+// fresh name lookup that could turn up ambiguous all over again.
+function resolveNameSlot(persons, nameText, chosenId) {
+  if (chosenId) return persons[chosenId] ? [persons[chosenId]] : [];
+  return findPersonMatches(persons, nameText);
+}
+
+// Orchestrates a parsed query + the relationship engine into one of a few
+// result kinds the UI can render directly:
 //   'relation'   — a single answer, with English/Tamil terms and the path
 //   'list'       — every relative of a person matching the asked-for word
-//   'ambiguous'  — a name matched more than one person; caller should ask
-//                  which one, showing `candidates`
+//   'ambiguous'  — a name matched more than one person; `slot` says which
+//                  name ('nameA'/'nameB'/'name') the caller should re-resolve
+//                  by passing it in `chosen` on a follow-up call, so picking
+//                  one of `candidates` answers the ORIGINAL question instead
+//                  of just navigating away from it
 //   'error'      — couldn't find a person, no connection exists, or the
 //                  question didn't match any recognized phrasing
-export function answerQuery(persons, rawText) {
-  const parsed = parseQuery(rawText);
-  if (parsed.type === 'empty') return { kind: 'empty' };
+// `chosen` is an optional { nameA?, nameB?, name? } map of slot -> personId,
+// for resolving one of the ambiguous cases above without re-parsing the text.
+export function resolveAnswer(persons, parsed, chosen = {}) {
+  if (!parsed || parsed.type === 'empty') return { kind: 'empty' };
   if (parsed.type === 'unknown') return { kind: 'error', message: `I didn't understand that. ${HELP_MESSAGE}` };
 
   if (parsed.type === 'relation-between') {
-    const aMatches = findPersonMatches(persons, parsed.nameA);
+    const aMatches = resolveNameSlot(persons, parsed.nameA, chosen.nameA);
     if (!aMatches.length) return { kind: 'error', message: `I couldn't find anyone named "${parsed.nameA.trim()}".` };
-    if (aMatches.length > 1) return { kind: 'ambiguous', term: parsed.nameA, candidates: aMatches };
+    if (aMatches.length > 1) return { kind: 'ambiguous', slot: 'nameA', term: parsed.nameA, candidates: aMatches };
 
-    const bMatches = findPersonMatches(persons, parsed.nameB);
+    const bMatches = resolveNameSlot(persons, parsed.nameB, chosen.nameB);
     if (!bMatches.length) return { kind: 'error', message: `I couldn't find anyone named "${parsed.nameB.trim()}".` };
-    if (bMatches.length > 1) return { kind: 'ambiguous', term: parsed.nameB, candidates: bMatches };
+    if (bMatches.length > 1) return { kind: 'ambiguous', slot: 'nameB', term: parsed.nameB, candidates: bMatches };
 
     const fromPerson = aMatches[0];
     const toPerson = bMatches[0];
@@ -159,9 +173,9 @@ export function answerQuery(persons, rawText) {
   }
 
   if (parsed.type === 'relation-list') {
-    const matches = findPersonMatches(persons, parsed.name);
+    const matches = resolveNameSlot(persons, parsed.name, chosen.name);
     if (!matches.length) return { kind: 'error', message: `I couldn't find anyone named "${parsed.name.trim()}".` };
-    if (matches.length > 1) return { kind: 'ambiguous', term: parsed.name, candidates: matches };
+    if (matches.length > 1) return { kind: 'ambiguous', slot: 'name', term: parsed.name, candidates: matches };
 
     const person = matches[0];
     const relatives = Object.values(persons)
@@ -172,6 +186,10 @@ export function answerQuery(persons, rawText) {
   }
 
   return { kind: 'error', message: `I didn't understand that. ${HELP_MESSAGE}` };
+}
+
+export function answerQuery(persons, rawText) {
+  return resolveAnswer(persons, parseQuery(rawText), {});
 }
 
 export { HELP_MESSAGE };
