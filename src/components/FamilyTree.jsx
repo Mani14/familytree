@@ -1,6 +1,6 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { NODE_H, NODE_W, COUPLE_GAP, AVATAR_TOP, AVATAR_SIZE, useForestLayout, usePedigreeLayout } from '../hooks/useTreeLayout';
-import { findRootBridges, getForestRoots, getLineageRootIds, isPrimaryOnLeft } from '../utils/familyUtils';
+import { findRootBridges, getForestRoots, getLineageRootIds, getPerson, getRelationshipLabel, isPrimaryOnLeft } from '../utils/familyUtils';
 import ConnectorLines from './ConnectorLines';
 import MiniMap from './MiniMap';
 import TreeNode from './TreeNode';
@@ -224,6 +224,29 @@ const FamilyTree = forwardRef(function FamilyTree(
         ? pointAlongLink(highlightedLinks[0], 0)
         : carFallbackPoint);
   const showCar = locatedChainIndex >= 0 && (currentLink || carRestPoint);
+
+  // "Find Connection" travel label — names whoever the car has just reached,
+  // relative to the PREVIOUS person on the chain (not the trip's overall start),
+  // so a long trip reads as a relay of hand-offs — "Manikandan's Father ·
+  // Kesavamoorthy", then "Kesavamoorthy's Father · Subramaniyan", then
+  // "Subramaniyan's Daughter · Amutha" — rather than every stop being awkwardly
+  // re-explained relative to Manikandan regardless of how far removed it is by
+  // then. Reuses locatedNode's own position (not the car's per-frame one), so
+  // the text doesn't jitter mid-glide. Keyed off locatedChainIndex rather than
+  // isTraveling so the final stop's label stays up after arrival too, matching
+  // how the highlighted path itself stays drawn.
+  const travelLabel = useMemo(() => {
+    if (locatedChainIndex <= 0 || !locatedId) return null;
+    const fromId = highlightChainArray[locatedChainIndex - 1];
+    const fromPerson = getPerson(persons, fromId);
+    const toPerson = getPerson(persons, locatedId);
+    if (!fromPerson || !toPerson) return null;
+    const relation = getRelationshipLabel(persons, locatedId, fromId);
+    return relation ? `${fromPerson.firstName}'s ${relation} · ${toPerson.firstName}` : toPerson.firstName;
+  }, [highlightChainArray, locatedChainIndex, locatedId, persons]);
+  const labelPoint = travelLabel && locatedNode
+    ? { x: individualX(locatedNode, locatedId), y: locatedNode.y + AVATAR_TOP }
+    : null;
 
   const carRef = useRef(null);
   const carAnimRef = useRef(null);
@@ -726,6 +749,17 @@ const FamilyTree = forwardRef(function FamilyTree(
                 <rect x="4.5" y="14" width="2.2" height="4" rx="1" fill="#1f1f1f" />
                 <rect x="17.3" y="14" width="2.2" height="4" rx="1" fill="#1f1f1f" />
               </svg>
+            </div>
+          )}
+          {travelLabel && labelPoint && (
+            // Remounted (via `key`) on every hop so the fade/pop-in CSS animation
+            // replays for each new stop instead of only ever running once.
+            <div
+              key={locatedId}
+              className="travel-label"
+              style={{ transform: `translate(${labelPoint.x}px, ${labelPoint.y}px) translate(-50%, -100%)` }}
+            >
+              {travelLabel}
             </div>
           )}
         </div>

@@ -718,7 +718,16 @@ function inLawLabel(persons, personId, rootId, male, female) {
   if (!person || !root) return null;
   const candidates = [];
 
-  if (person.spouseId && person.spouseId !== rootId) {
+  // Only for a genuine step-relation (personId has no recorded blood link of
+  // their own — e.g. a grandfather's second wife's own husband, who married
+  // in without being anyone's recorded blood parent themselves) — skipped
+  // when personId is ALSO independently blood-related to rootId, or an
+  // ordinary two-parent couple would double up: person.spouse being the
+  // OTHER, blood-recorded parent (matched here) duplicates the "Father"/
+  // "Mother" that bloodLabel already derives directly from personId's own
+  // parentIds, producing a nonsensical "Father / Father" instead of just
+  // "Father".
+  if (person.spouseId && person.spouseId !== rootId && !commonAncestor(persons, personId, rootId)) {
     const ca = commonAncestor(persons, person.spouseId, rootId);
     if (ca) {
       const term = inLawTermMarriedIn(ca.distA, ca.distB, male, female);
@@ -1229,7 +1238,14 @@ function tamilInLawLabel(persons, personId, rootId, male, female) {
   const candidates = [];
 
   // person's spouse is blood-related to root (person married INTO root's family).
-  if (person.spouseId && person.spouseId !== rootId) {
+  // Only for a genuine step-relation (personId has no recorded blood link of
+  // their own) — skipped when personId is ALSO independently blood-related to
+  // rootId, or an ordinary two-parent couple would double up: person.spouse
+  // being the OTHER, blood-recorded parent duplicates the அப்பா/அம்மா that
+  // tamilBloodLabelFromDistances already derives directly from personId's own
+  // parentIds — see inLawLabel's matching guard for the English-side version
+  // of this same bug ("Father / Father").
+  if (person.spouseId && person.spouseId !== rootId && !commonAncestor(persons, personId, rootId)) {
     const spouse = getPerson(persons, person.spouseId);
     const ca = commonAncestor(persons, person.spouseId, rootId);
     if (ca && spouse) {

@@ -47,6 +47,40 @@
   filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35));
 }
 
+/* "Find Connection" travel label — names whoever the car has just reached,
+   relative to the trip's own start person (see FamilyTree's travelLabel), so
+   each stop reads as a story instead of just a moving dot. Positioned via an
+   inline transform (see FamilyTree's labelPoint) rather than top/left, to
+   share the same coordinate space as the car/connector lines. */
+.travel-label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  margin-top: -10px;
+  padding: 5px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--color-highlight);
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 6;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.28);
+  animation: travel-label-in 0.25s ease;
+}
+
+/* Only animates opacity, not transform — the positioning transform above is a
+   dynamic per-hop translate (see FamilyTree's labelPoint), and animating a
+   second, differently-shaped transform on top of it can't interpolate
+   smoothly (mismatched transform function lists don't tween, they just
+   jump), so a slide/scale entrance here would look like a stutter. */
+@keyframes travel-label-in {
+  from {
+    opacity: 0;
+  }
+}
+
 .tree-world {
   position: absolute;
   top: 0;
