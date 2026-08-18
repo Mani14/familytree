@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Compass, GitBranch, Languages, LogOut, Map, MessageCircleQuestion, Menu, ShieldAlert, ShieldCheck } from 'lucide-react';
+import { Compass, GitBranch, Languages, LogOut, Map, MessageCircleQuestion, Menu, ShieldAlert } from 'lucide-react';
 import ImportExport from './ImportExport';
 import '../styles/MobileMenu.css';
 
@@ -16,7 +16,6 @@ export default function MobileMenu({
   viewMode,
   onToggleViewMode,
   onOpenStats,
-  onOpenDataHealth,
   onOpenFeatures,
   onOpenFamilyMap,
   onOpenRelationshipRules,
@@ -124,11 +123,6 @@ export default function MobileMenu({
               {isAdmin && (
                 <button type="button" role="menuitem" onClick={() => { onOpenAdmin(); close(); }}>
                   <ShieldAlert size={15} /> Admin Settings
-                </button>
-              )}
-              {isAdmin && (
-                <button type="button" role="menuitem" onClick={() => { onOpenDataHealth(); close(); }}>
-                  <ShieldCheck size={15} /> Data Quality
                 </button>
               )}
               <button type="button" role="menuitem" className="mobile-menu-signout" onClick={() => { onSignOut(); close(); }}>

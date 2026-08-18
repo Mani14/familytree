@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
-import { ShieldAlert, Trash2, UserPlus } from 'lucide-react';
+import { ShieldAlert, ShieldCheck, Trash2, UserPlus } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { getFullName, getPerson } from '../utils/familyUtils';
 import Modal from './Modal';
@@ -21,6 +21,7 @@ export default function AdminPanel({
   settings,
   updateSettings,
   onRequestReset,
+  onOpenDataHealth,
 }) {
   const [newAdminEmail, setNewAdminEmail] = useState('');
   const [userLinks, setUserLinks] = useState(null); // null = not loaded yet
@@ -178,6 +179,14 @@ export default function AdminPanel({
           Google email addresses of other accounts aren't readable from the browser —
           this shows which family member each signed-in account is linked to instead.
         </p>
+      </section>
+
+      <section className="admin-section">
+        <h3>Data Quality</h3>
+        <p className="admin-muted">Scan for broken or inconsistent relationships — dangling references, asymmetric links, unfilled placeholders.</p>
+        <button type="button" className="admin-secondary-btn" onClick={onOpenDataHealth}>
+          <ShieldCheck size={14} /> Open Data Health Check
+        </button>
       </section>
 
       <section className="admin-section admin-danger-zone">

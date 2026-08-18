@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowLeft, Check, Compass, GitBranch, Languages, Link2, LocateFixed, LogOut, Map, MessageCircleQuestion, Menu, PlayCircle, Redo2, Route, ShieldAlert, ShieldCheck, Sparkles, Undo2, X } from 'lucide-react';
+import { ArrowLeft, Check, Compass, GitBranch, Languages, Link2, LocateFixed, LogOut, Map, MessageCircleQuestion, Menu, PlayCircle, Redo2, Route, ShieldAlert, Sparkles, Undo2, X } from 'lucide-react';
 import { useFamily } from './hooks/useFamily';
 import { useAuth } from './hooks/useAuth';
 import { useAdmin } from './hooks/useAdmin';
@@ -786,17 +786,6 @@ export default function App() {
         >
           <Menu size={17} />
         </button>
-        {isAdmin && (
-          <button
-            type="button"
-            className="icon-btn desktop-header-item"
-            onClick={() => setShowDataHealth(true)}
-            aria-label="Data health check"
-            title="Scan for broken/inconsistent relationships"
-          >
-            <ShieldCheck size={17} />
-          </button>
-        )}
         <button
           type="button"
           className="icon-btn desktop-header-item"
@@ -870,7 +859,6 @@ export default function App() {
           viewMode={viewMode}
           onToggleViewMode={() => setViewMode((m) => (m === 'forest' ? 'pedigree' : 'forest'))}
           onOpenStats={() => setShowStatsPanel(true)}
-          onOpenDataHealth={() => setShowDataHealth(true)}
           onOpenFeatures={() => setShowFeatureShowcase(true)}
           onOpenFamilyMap={() => setShowFamilyMap(true)}
           onOpenRelationshipRules={() => setShowRelationshipRules(true)}
@@ -1226,6 +1214,7 @@ export default function App() {
           settings={appSettings}
           updateSettings={updateAppSettings}
           onRequestReset={handleRequestReset}
+          onOpenDataHealth={() => setShowDataHealth(true)}
         />
       )}
 

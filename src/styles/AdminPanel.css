@@ -140,6 +140,25 @@
   color: var(--color-text-muted);
 }
 
+.admin-secondary-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 8px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-primary);
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .admin-secondary-btn:hover {
+    border-color: var(--color-primary);
+  }
+}
+
 .admin-danger-zone {
   gap: 10px;
 }
