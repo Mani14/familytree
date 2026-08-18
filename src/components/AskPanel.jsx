@@ -50,6 +50,16 @@ function AnswerBody({ result, onGo, onShowTree, onResolveAmbiguous }) {
 
   if (result.kind === 'relation') {
     const { fromPerson, toPerson, english, tamil } = result;
+    // Tamil-only is a normal, complete answer (see PersonDetail's own badge —
+    // not every relationship reduces to a clean English word), so it's shown
+    // alone rather than paired with a vague placeholder. The generic fallback
+    // is reserved for the genuinely rare case where NEITHER language could
+    // name it — a connection that exists (there IS a path — see "Show on
+    // tree") but runs through enough marriages that it's too distant/
+    // roundabout for the app's relationship rules to name specifically.
+    const term = tamil && english
+      ? `${tamil} · ${english}`
+      : tamil || english || "connected through marriage, but too distant for a specific term — tap “Show on tree” to see how";
     return (
       <div className="ask-panel-answer">
         <p>
@@ -61,8 +71,7 @@ function AnswerBody({ result, onGo, onShowTree, onResolveAmbiguous }) {
             {getDisplayName(fromPerson)}
           </button>
           {'’s '}
-          {tamil ? `${tamil} · ` : ''}
-          {english || 'relative (by marriage further removed)'}
+          {term}
         </p>
         <button type="button" className="ask-panel-show-tree" onClick={() => onShowTree(fromPerson.id, toPerson.id)}>
           <Route size={13} /> Show on tree

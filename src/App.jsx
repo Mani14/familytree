@@ -1102,13 +1102,19 @@ export default function App() {
         if (!fromPerson || !toPerson) return null;
         const english = getRelationshipLabel(persons, connectionResult.toId, connectionResult.fromId);
         const tamil = getRelationshipLabelTamil(persons, connectionResult.toId, connectionResult.fromId, relationshipOverrides);
+        // Tamil-only is a normal, complete answer (see PersonDetail's own
+        // badge) — the generic fallback is reserved for the rare case where
+        // NEITHER language could name it (a real connection exists — the
+        // path just drawn IS it — but it's too distant/roundabout through
+        // marriage for the app's relationship rules to name specifically).
+        const term = tamil && english
+          ? `${tamil} · ${english}`
+          : tamil || english || 'connected through marriage, but too distant for a specific term';
         return (
           <div className="connection-result glass-surface">
             <Route size={14} />
             <span>
-              {getFullName(toPerson)} is {getFullName(fromPerson)}'s{' '}
-              {tamil ? `${tamil} · ` : ''}
-              {english || 'relative (by marriage further removed)'}
+              {getFullName(toPerson)} is {getFullName(fromPerson)}'s {term}
             </span>
             <button
               type="button"
