@@ -115,9 +115,6 @@ export default function App() {
   // A locate request { id, nonce }: the nonce bumps on every Locate so FamilyTree
   // re-centres even when locating the same person twice or the current root.
   const [locateRequest, setLocateRequest] = useState({ id: null, nonce: 0 });
-  // Person the relationship badge is measured against — set only by explicit "Set as
-  // Root"; falls back to "me" so relationships read relative to you by default.
-  const [explicitRootId, setExplicitRootId] = useState(null);
   // Which person's tree view you land on — a PERSONAL preference (myRootId,
   // stored on your own account, see useAuth), never the shared family data —
   // so one person setting theirs doesn't change what anyone else sees. Falls
@@ -195,7 +192,6 @@ export default function App() {
   const handleSetAsRoot = useCallback(() => {
     if (!selectedId) return;
     setMyRoot(selectedId);
-    setExplicitRootId(selectedId);
     // rootId={focusId || effectiveRootId} below always prefers focusId when set
     // — without this, a focus left over from before switching roots keeps the
     // diagram (and its yellow ring) centred on whoever was focused earlier
@@ -669,9 +665,17 @@ export default function App() {
     return { gender: 'male' };
   };
 
-  // The relationship badge is measured against an explicitly-set root if there is one,
-  // otherwise "me"; when neither exists there's no anchor and the badge is hidden.
-  const relationshipAnchorId = explicitRootId || meId || null;
+  // The relationship badge is measured against your own personal root
+  // (myRootId, persisted — see useAuth's setMyRoot) if you've set one,
+  // otherwise "me"; when neither exists there's no anchor and the badge is
+  // hidden. Reads myRootId directly (not effectiveRootId's own fallback
+  // chain) so an unlinked visitor with no personal root set doesn't get
+  // relationship labels measured against the arbitrary shared rootPersonId —
+  // previously this used a separate `explicitRootId` local state that reset
+  // to null on every page refresh, silently losing "Viewing as X" for
+  // relationship labels (though the tree view itself, driven by myRootId
+  // directly, stayed correct) until "Set as Root" was clicked again.
+  const relationshipAnchorId = myRootId || meId || null;
   const relationshipAnchorContext = relationshipAnchorId
     ? (relationshipAnchorId === meId ? 'you' : getPerson(persons, relationshipAnchorId)?.firstName || 'root')
     : null;
@@ -941,12 +945,9 @@ export default function App() {
               // correctly if you're ever unlinked later too.
               setMyRoot(null);
               setFocusId(meId);
-              // "Set as Root" also stamps explicitRootId (see relationshipAnchorId
-              // below), which otherwise keeps relationship labels ("1st Cousin to
-              // Velmurugan") anchored to whoever was last set as root even after
-              // the tree itself resets — clearing it falls relationshipAnchorId
-              // back to meId, same as if no one had ever been explicitly set.
-              setExplicitRootId(null);
+              // relationshipAnchorId reads myRootId directly, so clearing it here
+              // also falls relationship labels back to meId — no separate state
+              // to reset.
               // Forest View's layout doesn't key off rootId/focusId at all (see
               // FamilyTree's own rootId-change effect), so clearing while
               // already in Full Tree View updated the data but showed no

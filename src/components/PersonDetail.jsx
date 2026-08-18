@@ -211,8 +211,12 @@ export default function PersonDetail({
   // affordance below independently of relationshipLabel's own (English-only)
   // truthiness check.
   const relationshipSignature = anchorId ? getRelationshipSignature(persons, person.id, anchorId) : null;
-  const relationshipLabel = baseRelationship
-    ? `${tamilRelationship ? `${tamilRelationship} · ` : ''}${baseRelationship} (to ${anchorContext})`
+  // English isn't required — some relationship shapes (a chained-in-law's
+  // own further-removed relatives) only have a clean word in Tamil; showing
+  // a manufactured, nested English phrase for those ("Cousin-in-law's Spouse
+  // (in-law)") reads worse than just omitting English for that one badge.
+  const relationshipLabel = tamilRelationship || baseRelationship
+    ? `${tamilRelationship ? `${tamilRelationship}${baseRelationship ? ' · ' : ''}` : ''}${baseRelationship ? `${baseRelationship} ` : ''}(to ${anchorContext})`
     : null;
   const daysUntilBirthday = person.isAlive ? getDaysUntilBirthday(person.dob) : null;
   const stats = getFamilyStats(persons, person);

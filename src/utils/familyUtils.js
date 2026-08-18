@@ -700,6 +700,13 @@ function inLawTermSpouseKin(distPerson, distRS, male, female) {
   }
   // root's spouse's sibling's own child (e.g. your wife's sister's child).
   if (distPerson === 2 && distRS === 1) return male ? 'Nephew-in-law' : female ? 'Niece-in-law' : 'Nephew/Niece-in-law';
+  // root's spouse's uncle/aunt's own child (e.g. Kesavamoorthy's child,
+  // relative to Soundari) — root's spouse's 1st cousin.
+  if (distPerson === 2 && distRS === 2) return 'Cousin-in-law';
+  // root's spouse's 1st cousin's own child (e.g. Iniya, whose mother Sowmiya
+  // is root's spouse's 1st cousin) — one generation further removed, same
+  // plain-ordinal pattern bloodLabelFromDistances' own cousin fallback uses.
+  if (distPerson === 3 && distRS === 2) return `${ordinal(distPerson - 1)} Cousin-in-law`;
   return null;
 }
 
@@ -759,7 +766,9 @@ function inLawLabel(persons, personId, rootId, male, female) {
 // "Aunt", "2nd Cousin"), marriage/in-law (e.g. "Sister-in-law"), or both joined with
 // " / " when a person is related in more than one way. Returns null for the root
 // themselves, an unrelated/unrecorded pair, or when either id is missing.
-export function getRelationshipLabel(persons, personId, rootId) {
+// Split out for the same reason computePrimaryTamilTerm is — the generic
+// spousal fallback below needs to call this WITHOUT re-triggering itself.
+function computePrimaryEnglishTerm(persons, personId, rootId) {
   if (!personId || !rootId || personId === rootId) return null;
   const person = getPerson(persons, personId);
   const root = getPerson(persons, rootId);
@@ -775,6 +784,68 @@ export function getRelationshipLabel(persons, personId, rootId) {
     inLawLabel(persons, personId, rootId, male, female),
   ].filter(Boolean);
   return parts.length ? parts.join(' / ') : null;
+}
+
+// Only the plain, direct-style sibling/uncle words a REAL "X-in-law" relation
+// would use — deliberately NOT a generic "<anything>'s Spouse (in-law)"
+// construction (reads as a manufactured, nested description rather than a
+// real relationship name). Anyone whose spouse's own term isn't one of these
+// four plain words (e.g. an already-compound "Cousin-in-law") gets no
+// English label at all rather than a fabricated one — PersonDetail shows the
+// Tamil term alone in that case.
+const ENGLISH_SPOUSE_MIRROR = {
+  Brother: 'Sister-in-law',
+  Sister: 'Brother-in-law',
+  Uncle: 'Aunt-in-law',
+  Aunt: 'Uncle-in-law',
+};
+
+// English counterpart to resolveTamilTermChained — same reasoning: each
+// fallback recurses into the others (via cycle-protected `visiting`) so a
+// chain of any length resolves correctly, not just one hop of composability.
+function resolveEnglishTermChained(persons, personId, rootId, visiting) {
+  if (visiting.has(personId)) return null;
+  visiting.add(personId);
+  try {
+    const primary = computePrimaryEnglishTerm(persons, personId, rootId);
+    if (primary) return primary;
+
+    const person = getPerson(persons, personId);
+    if (!person) return null;
+
+    if (person.spouseId && person.spouseId !== rootId) {
+      const spouseTerm = resolveEnglishTermChained(persons, person.spouseId, rootId, visiting);
+      const mapped = spouseTerm && ENGLISH_SPOUSE_MIRROR[spouseTerm];
+      if (mapped) return mapped;
+    }
+
+    // Sibling inheritance — copying a sibling's own clean term as-is (not a
+    // manufactured nested phrase) is exactly the "equivalent to a direct
+    // relationship" style this file's English labels stick to.
+    for (const sibling of getSiblings(persons, person)) {
+      const siblingTerm = resolveEnglishTermChained(persons, sibling.id, rootId, visiting);
+      if (siblingTerm) return siblingTerm;
+    }
+
+    // Parent-category inheritance — a plain, direct-style word for each
+    // category rather than a nested description. A parent who is themselves
+    // only a chained "Cousin-in-law" (no blood path, e.g. Vinoth) still
+    // makes their own child a "Cousin-in-law" too — there's no side/removal
+    // data left at this depth to say anything more specific.
+    for (const parentId of person.parentIds || []) {
+      const parentTerm = resolveEnglishTermChained(persons, parentId, rootId, visiting);
+      if (parentTerm === 'Uncle-in-law' || parentTerm === 'Aunt-in-law' || parentTerm === 'Cousin-in-law') {
+        return 'Cousin-in-law';
+      }
+    }
+    return null;
+  } finally {
+    visiting.delete(personId);
+  }
+}
+
+export function getRelationshipLabel(persons, personId, rootId) {
+  return resolveEnglishTermChained(persons, personId, rootId, new Set());
 }
 
 // --- Tamil relationship terms ----------------------------------------------
@@ -1230,12 +1301,64 @@ function tamilInLawLabel(persons, personId, rootId, male, female) {
         term = tamilUncleAuntPairTerm(persons, root.spouseId, ancestorId, personId, personGender, 2, null, false, true);
       } else if (distPersonToAnc === 1 && distRS > 2) {
         term = personGender === 'male' ? 'தொலைவு மாமா' : personGender === 'female' ? 'தொலைவு அத்தை' : null;
+      } else if (distPersonToAnc === 2 && distRS === 2) {
+        // A CHILD of root's spouse's uncle/aunt (e.g. Kesavamoorthy's own
+        // child, or Narayanan Family's own child, relative to Soundari) —
+        // same generation as root's spouse relative to their shared
+        // ancestor, exactly like a 1st cousin. Mirrors tamilUncleAuntPairTerm's
+        // own invertSide logic one generation down, for BOTH directions:
+        // TRUE-cross to root's spouse (Kesavamoorthy is Velmurugan's
+        // mother's BROTHER) becomes sibling-treated for root (Anna/Thambi/
+        // Akka/Thangai), using the same elder/younger order that decided the
+        // uncle's own Periyappa/Chithappa-vs-Mama status; TRUE-parallel to
+        // root's spouse (Narayanan Family is Velmurugan's father's BROTHER,
+        // say — a real parallel cousin of Velmurugan's) becomes CROSS for
+        // root instead — a cross-cousin (Machaan/Machinichi), the same word
+        // a true blood cross-cousin gets, with no elder/younger distinction
+        // (matching how that term already works for a direct cross-cousin).
+        const rootParent = tamilConnectingChild(persons, ancestorId, root.spouseId, 2);
+        const personParent = tamilConnectingChild(persons, ancestorId, personId, 2);
+        const rootParentGender = rootParent ? getPerson(persons, rootParent)?.gender : null;
+        const personParentGender = personParent ? getPerson(persons, personParent)?.gender : null;
+        if (rootParentGender && personParentGender) {
+          if (rootParentGender !== personParentGender) {
+            const order = tamilBirthOrder(persons, ancestorId, personParent, rootParent);
+            if (male) term = order === 'elder' ? 'அண்ணன்' : order === 'younger' ? 'தம்பி' : 'சகோதரன்';
+            if (female) term = order === 'elder' ? 'அக்கா' : order === 'younger' ? 'தங்கை' : 'சகோதரி';
+          } else {
+            term = male ? 'மைத்துனன்/மச்சான்' : female ? 'மைத்துனி/மச்சினிச்சி' : 'மச்சான்/மச்சினிச்சி';
+          }
+        }
       } else if (distPersonToAnc === 2 && distRS === 1) {
         // root's spouse's sibling's own child (e.g. your wife's sister's
         // child, like Janakiraman & Dhivya's child relative to root) — Tamil
         // treats them as your own (Magan/Magal), the same way Annan/Anni's
         // own children already would be if they were a direct sibling.
         term = male ? 'மகன்' : female ? 'மகள்' : 'மகன்/மகள்';
+      } else if (distPersonToAnc === 3 && distRS === 2) {
+        // A CHILD of root's spouse's 1st-cousin-in-law (e.g. Iniya, whose
+        // mother Sowmiya is Soundari's cousin-in-law) — mirrors the blood
+        // "cousin's own child" branch (tamilBloodLabelFromDistances,
+        // distRoot===2 && distPerson===3) exactly, just measured from
+        // root.spouseId instead of rootId: own-line (Magan/Magal) vs
+        // cross-line (Marumagan/Marumagal) depends on whether the connecting
+        // cousin's OWN gender matches the "TRUE-parallel-to-root's-spouse"
+        // classification (see the distPersonToAnc===2 branch's own comment
+        // on why cross-to-spouse is what makes someone sibling-treated here).
+        const rootParent = tamilConnectingChild(persons, ancestorId, root.spouseId, 2);
+        const cousinParent = tamilConnectingChild(persons, ancestorId, personId, 3);
+        const rootParentGender = rootParent ? getPerson(persons, rootParent)?.gender : null;
+        const cousinParentGender = cousinParent ? getPerson(persons, cousinParent)?.gender : null;
+        if (rootParentGender && cousinParentGender) {
+          const isParallel = rootParentGender === cousinParentGender;
+          const cousin = tamilConnectingChild(persons, cousinParent, personId, 2);
+          const cousinGender = cousin ? getPerson(persons, cousin)?.gender : null;
+          if (cousinGender) {
+            const ownLine = isParallel ? cousinGender === 'male' : cousinGender === 'female';
+            if (!ownLine) term = male ? 'மருமகன்' : female ? 'மருமகள்' : 'மருமகன்/மருமகள்';
+            else term = male ? 'மகன்' : female ? 'மகள்' : 'மகன்/மகள்';
+          }
+        }
       }
       if (term) candidates.push({ term, cost: distPersonToAnc + distRS });
     }
@@ -1281,7 +1404,13 @@ function tamilInLawLabel(persons, personId, rootId, male, female) {
 // label, joined with " / " if both apply), but in Tamil terms that track side and
 // birth order where English doesn't. Meant to be shown ALONGSIDE the English
 // label (before it), not as a replacement — see PersonDetail's relationshipLabel.
-export function getRelationshipLabelTamil(persons, personId, rootId, overrides = []) {
+// The full direct computation (blood + in-law + overrides + uncle/aunt
+// dynamic pairing) — everything getRelationshipLabelTamil used to do before
+// the generic spousal-mirror fallback below was added. Split out so that
+// fallback can call this WITHOUT itself invoking the fallback again (calling
+// the exported function recursively here would let two spouses who both lack
+// a direct term send it looping between them forever).
+function computePrimaryTamilTerm(persons, personId, rootId, overrides) {
   if (!personId || !rootId || personId === rootId) return null;
   const person = getPerson(persons, personId);
   const root = getPerson(persons, rootId);
@@ -1335,6 +1464,143 @@ export function getRelationshipLabelTamil(persons, personId, rootId, overrides =
 
   const parts = [blood, inLaw].filter(Boolean);
   return parts.length ? parts.join(' / ') : null;
+}
+
+// Sibling-family and uncle/aunt-family words only — deliberately excludes
+// Thambi/Marumagal-style pairs that mean different things in OTHER contexts
+// (see UNCLE_AUNT_PAIR_MAP's own comment) EXCEPT here it's safe to be a
+// little more generous: this table only ever fires as a LAST RESORT, after
+// every dedicated branch has already returned null for personId directly —
+// it can only fill a gap, never override a real computed answer, so a
+// slightly-approximate guess (correctable via the Relationship Rules panel)
+// beats a permanently blank badge.
+const SPOUSE_MIRROR_MAP = {
+  'அண்ணன்': 'அண்ணி',
+  'அக்கா': 'மாமா',
+  'தம்பி': 'மருமகள்',
+  'தங்கை': 'மாப்பிள்ளை',
+  'மாமா': 'அத்தை',
+  'அத்தை': 'மாமா',
+  'தாய் மாமா': 'அத்தை',
+  'பெரியப்பா': 'பெரியம்மா',
+  'பெரியம்மா': 'பெரியப்பா',
+  'சித்தப்பா': 'சித்தி/சின்னம்மா',
+  'சித்தி/சின்னம்மா': 'சித்தப்பா',
+};
+
+// Every word eligible for the sibling-inheritance fallback below — the same
+// sibling/uncle-family set SPOUSE_MIRROR_MAP covers, plus the cross-cousin
+// pair (மைத்துனன்/மச்சான், மைத்துனி/மச்சினிச்சி), which SPOUSE_MIRROR_MAP itself
+// doesn't map (that pair's spouse uses the DOB-based rule instead — see
+// getRelationshipLabelTamil) but is still a legitimate word to inherit as-is.
+const KNOWN_FAMILY_WORDS = new Set([
+  ...Object.keys(SPOUSE_MIRROR_MAP),
+  'மைத்துனன்/மச்சான்',
+  'மைத்துனி/மச்சினிச்சி',
+]);
+
+// Used by getRelationshipLabelTamil's fallback #3 (a parent with no blood
+// path of their own either) to decide whether THEIR child is a cross-cousin
+// or sibling-treated, purely from which word-family the parent's own term
+// belongs to — see that fallback's own comment for the reasoning.
+const CROSS_UNCLE_AUNT_WORDS = new Set(['மாமா', 'அத்தை', 'தாய் மாமா']);
+const SAME_SIDE_UNCLE_AUNT_WORDS = new Set(['பெரியப்பா', 'பெரியம்மா', 'சித்தப்பா', 'சித்தி/சின்னம்மா']);
+// A chained (non-blood-path) cross-cousin — Vinoth, whose own term only
+// exists via fallback #3 on his father Amirthalingam — has no common
+// ancestor with root either, so his own children can't reuse the
+// same-line/cross-line ownLine test a direct cross-cousin's child gets
+// (tamilInLawLabel's distPersonToAnc===3&&distRS===2 branch). மருமகன்/
+// மருமகள் (nephew/niece) is the cross-line outcome of that same test —
+// picked here as the single generic default rather than a compound string,
+// matching how fallback #3 above already collapses missing order info to
+// one plain word (சகோதரன்/சகோதரி) instead of listing every possibility.
+const CROSS_COUSIN_WORDS = new Set(['மைத்துனன்/மச்சான்', 'மைத்துனி/மச்சினிச்சி']);
+
+// The full chained resolution — primary computation, then three generic
+// fallbacks that all recurse into EACH OTHER (a spouse's term might itself
+// only exist via sibling-inheritance; a sibling's term might itself only
+// exist via their own spouse; etc.), so a real chain of any length resolves
+// correctly no matter which fallback each individual hop needs. `visiting`
+// is a Set of personIds already being resolved in this call stack — every
+// hop is a marriage or blood link, and REAL families are acyclic through
+// those (you can't be your own ancestor or your own spouse's spouse), so the
+// only way this set ever matters is genuinely circular data; it exists
+// purely to stop that from infinite-looping mutual spouses/siblings, not
+// because legitimate chains are expected to revisit anyone.
+function resolveTamilTermChained(persons, personId, rootId, overrides, visiting) {
+  if (visiting.has(personId)) return null;
+  visiting.add(personId);
+  try {
+    const primary = computePrimaryTamilTerm(persons, personId, rootId, overrides);
+    if (primary) return primary;
+
+    const person = getPerson(persons, personId);
+    if (!person) return null;
+
+    // Fallback #1: personId's SPOUSE'S term (their own, or itself chained
+    // through fallback #2/#3) is a known sibling/uncle-family word — mirror
+    // it. E.g. Suriya, married to Vinoth, who only has a term via HIS
+    // father Amirthalingam, who only has a term via HIS brother Shankar.
+    if (person.spouseId && person.spouseId !== rootId) {
+      const spouseTerm = resolveTamilTermChained(persons, person.spouseId, rootId, overrides, visiting);
+      // A cross-cousin's own spouse (e.g. Suriya, or Sangeeta married to
+      // Murugesh) — no shared-parent birth order to reuse (married in), same
+      // as a direct cross-cousin's spouse, so this reuses that exact
+      // DOB-based rule instead of a fixed word mapping.
+      const spouse = getPerson(persons, person.spouseId);
+      if (spouseTerm === 'மைத்துனன்/மச்சான்' || spouseTerm === 'மைத்துனி/மச்சினிச்சி') {
+        const crossTerm = tamilCrossCousinSpouseTerm(persons, personId, rootId, spouse?.gender);
+        if (crossTerm) return crossTerm;
+      }
+      const mapped = SPOUSE_MIRROR_MAP[spouseTerm];
+      if (mapped) return mapped;
+    }
+
+    // Fallback #2: personId is the SIBLING of someone who married into
+    // root's family — Tamil treats that whole sibling group uniformly
+    // rather than computing each one individually by birth order (unlike a
+    // REAL blood uncle/aunt's own siblings, who each get their own distinct
+    // Periyappa/Chithappa).
+    for (const sibling of getSiblings(persons, person)) {
+      const siblingTerm = resolveTamilTermChained(persons, sibling.id, rootId, overrides, visiting);
+      if (siblingTerm && KNOWN_FAMILY_WORDS.has(siblingTerm)) return siblingTerm;
+    }
+
+    // Fallback #3: personId's own PARENT is a Mama/Athai/Periyappa/
+    // Chithappa-type relative with no blood path of their own either (e.g.
+    // Vinoth, whose father Amirthalingam only has a term via HIS brother
+    // Shankar). No common ancestor exists to compute a real side/order from,
+    // but the parent's own term CATEGORY already answers the only question
+    // that matters: a cross-side parent (Mama/Athai/Thai Mama — always
+    // married-in or opposite-gender-sibling relatives) makes their child a
+    // cross-cousin (Machaan/Machinichi) by the same convention a direct
+    // cross-uncle's child already follows; a same-side parent (Periyappa/
+    // Chithappa/Periyamma/Chithi) makes their child sibling-treated, though
+    // without birth-order data to pick Anna vs Thambi, this falls back to
+    // the plain சகோதரன்/சகோதரி word the direct sibling branch itself uses
+    // when order can't be determined either.
+    for (const parentId of person.parentIds) {
+      const parentTerm = resolveTamilTermChained(persons, parentId, rootId, overrides, visiting);
+      if (CROSS_UNCLE_AUNT_WORDS.has(parentTerm)) {
+        return person.gender === 'male' ? 'மைத்துனன்/மச்சான்'
+          : person.gender === 'female' ? 'மைத்துனி/மச்சினிச்சி'
+          : 'மச்சான்/மச்சினிச்சி';
+      }
+      if (SAME_SIDE_UNCLE_AUNT_WORDS.has(parentTerm)) {
+        return person.gender === 'male' ? 'சகோதரன்' : person.gender === 'female' ? 'சகோதரி' : 'உடன்பிறப்பு';
+      }
+      if (CROSS_COUSIN_WORDS.has(parentTerm)) {
+        return person.gender === 'male' ? 'மருமகன்' : person.gender === 'female' ? 'மருமகள்' : 'மருமகன்/மருமகள்';
+      }
+    }
+    return null;
+  } finally {
+    visiting.delete(personId);
+  }
+}
+
+export function getRelationshipLabelTamil(persons, personId, rootId, overrides = []) {
+  return resolveTamilTermChained(persons, personId, rootId, overrides, new Set());
 }
 
 // --- Custom relationship-term rules -----------------------------------------
@@ -1542,6 +1808,22 @@ function inLawSpouseKinSignature(persons, personId, rootId, ca, gender) {
     const connectingParent = tamilConnectingChild(persons, ancestorId, root.spouseId, 2);
     const order = connectingParent ? tamilBirthOrder(persons, ancestorId, personId, connectingParent) : null;
     return fillSignature('inlaw-spouse-kin', { distA: distPersonToAnc, distB: distRS, gender, side, order });
+  }
+  if (distPersonToAnc === 2 && distRS === 2) {
+    // A child of root's spouse's uncle/aunt (root's spouse's 1st cousin) —
+    // lineMatch reflects the ALREADY-INVERTED classification (see the
+    // matching term-computation in tamilInLawLabel): 'same' when the
+    // underlying line is TRUE-cross to root's spouse (sibling-treated for
+    // root, e.g. Kesavamoorthy's child), 'cross' the other way around.
+    const rootParent = tamilConnectingChild(persons, ancestorId, root.spouseId, 2);
+    const personParent = tamilConnectingChild(persons, ancestorId, personId, 2);
+    const rootParentGender = rootParent ? getPerson(persons, rootParent)?.gender : null;
+    const personParentGender = personParent ? getPerson(persons, personParent)?.gender : null;
+    if (rootParentGender && personParentGender) {
+      const lineMatch = rootParentGender !== personParentGender ? 'same' : 'cross';
+      const order = lineMatch === 'same' ? tamilBirthOrder(persons, ancestorId, personParent, rootParent) : null;
+      return fillSignature('inlaw-spouse-kin', { distA: distPersonToAnc, distB: distRS, gender, lineMatch, order });
+    }
   }
   return null;
 }
