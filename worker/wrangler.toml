@@ -1,0 +1,8 @@
+name = "family-tree-ask-worker"
+main = "src/index.js"
+compatibility_date = "2024-11-01"
+workers_dev = true
+preview_urls = false
+
+# GROQ_API_KEY is set via `wrangler secret put GROQ_API_KEY` — never stored in
+# this file or anywhere else in the repo.

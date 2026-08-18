@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
-import { Route, Send } from 'lucide-react';
+import { Loader2, Route, Send } from 'lucide-react';
 import { getDisplayName } from '../utils/familyUtils';
-import { parseQuery, resolveAnswer } from '../utils/naturalQuery';
+import { parseQueryAI, resolveAnswer } from '../utils/naturalQuery';
 import Modal from './Modal';
 import '../styles/AskPanel.css';
 
@@ -12,6 +12,14 @@ const EXAMPLES = [
 ];
 
 function AnswerBody({ result, onGo, onShowTree, onResolveAmbiguous }) {
+  if (result.kind === 'pending') {
+    return (
+      <p className="ask-panel-pending">
+        <Loader2 size={13} className="ask-panel-spinner" /> Thinking…
+      </p>
+    );
+  }
+
   if (result.kind === 'error') {
     return <p className="ask-panel-error">{result.message}</p>;
   }
@@ -88,11 +96,14 @@ function AnswerBody({ result, onGo, onShowTree, onResolveAmbiguous }) {
   return null;
 }
 
-// A plain-English question box over the family tree — answered entirely from
-// the tree's own already-tuned relationship engine (naturalQuery.js), not a
-// third-party AI chatbot: nothing about anyone's family ever leaves the
-// browser, there's no API key or rate limit, and the answers are exactly as
-// accurate as the app's own carefully-tuned Tamil kinship logic already is.
+// A plain-English question box over the family tree. Answering (relationship
+// terms, Tamil translations, tree paths) always stays entirely local, in the
+// app's own already-tuned relationship engine (naturalQuery.js) — no family
+// data is ever sent anywhere for that part. Understanding the QUESTION itself
+// is AI-assisted (parseQueryAI, via a Cloud Function + a free-tier LLM) so far
+// more phrasings work than a fixed set of regex patterns ever could; only the
+// question text itself is sent for that, never any person's data, and it
+// falls back to the local parser automatically if the AI call fails.
 export default function AskPanel({ persons, isOpen, onClose, onSelectPerson, onShowConnection }) {
   const [query, setQuery] = useState('');
   // Most-recent-first session log — not persisted, just lets someone ask a
@@ -101,6 +112,7 @@ export default function AskPanel({ persons, isOpen, onClose, onSelectPerson, onS
   // existing entry's index on every new question.
   const [history, setHistory] = useState([]);
   const nextEntryId = useRef(0);
+  const [pending, setPending] = useState(false);
 
   // Runs resolveAnswer defensively — no error boundary sits above this panel,
   // so an uncaught exception here would otherwise take the whole app down
@@ -114,14 +126,28 @@ export default function AskPanel({ persons, isOpen, onClose, onSelectPerson, onS
     }
   };
 
-  const ask = (text) => {
+  const ask = async (text) => {
     const trimmed = text.trim();
-    if (!trimmed) return;
-    const parsed = parseQuery(trimmed);
-    const chosen = {};
-    const entry = { id: nextEntryId.current++, question: trimmed, parsed, chosen, result: safeResolve(parsed, chosen) };
-    setHistory((prev) => [entry, ...prev]);
+    if (!trimmed || pending) return;
     setQuery('');
+    setPending(true);
+    const id = nextEntryId.current++;
+    // A placeholder shown immediately — the AI call is a real network
+    // round-trip, unlike the old purely-local parser, so without this the
+    // wait would look exactly like the earlier "nothing happens" bug.
+    setHistory((prev) => [{ id, question: trimmed, parsed: null, chosen: {}, result: { kind: 'pending' } }, ...prev]);
+
+    let parsed;
+    try {
+      parsed = await parseQueryAI(trimmed);
+    } catch (err) {
+      console.error('AskPanel: parseQueryAI threw', err);
+      parsed = { type: 'unknown' };
+    }
+    const chosen = {};
+    const result = safeResolve(parsed, chosen);
+    setHistory((prev) => prev.map((entry) => (entry.id === id ? { ...entry, parsed, chosen, result } : entry)));
+    setPending(false);
   };
 
   // Picking a disambiguation candidate re-answers the SAME question with that
@@ -151,7 +177,8 @@ export default function AskPanel({ persons, isOpen, onClose, onSelectPerson, onS
     <Modal isOpen={isOpen} onClose={onClose} title="Ask About the Family" width="520px" className="ask-panel">
       <h2>Ask About the Family</h2>
       <p className="ask-panel-hint">
-        Ask in plain English — answered instantly from the tree itself, nothing leaves your browser.
+        Ask in plain English — the answer itself always stays local to this tree; only the question text is sent
+        along to understand freer phrasing.
       </p>
 
       <form className="ask-panel-form" onSubmit={(e) => { e.preventDefault(); ask(query); }}>
@@ -160,10 +187,11 @@ export default function AskPanel({ persons, isOpen, onClose, onSelectPerson, onS
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="How is Sundari related to Kesavamoorthy?"
+          disabled={pending}
           autoFocus
         />
-        <button type="submit" aria-label="Ask" title="Ask">
-          <Send size={15} />
+        <button type="submit" aria-label="Ask" title="Ask" disabled={pending}>
+          {pending ? <Loader2 size={15} className="ask-panel-spinner" /> : <Send size={15} />}
         </button>
       </form>
 
@@ -173,7 +201,7 @@ export default function AskPanel({ persons, isOpen, onClose, onSelectPerson, onS
           <ul>
             {EXAMPLES.map((ex) => (
               <li key={ex}>
-                <button type="button" onClick={() => ask(ex)}>{ex}</button>
+                <button type="button" onClick={() => ask(ex)} disabled={pending}>{ex}</button>
               </li>
             ))}
           </ul>

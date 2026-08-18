@@ -1,15 +1,26 @@
-// Plain-English question answering over the family tree — reuses the existing
-// relationship engine (getRelationshipLabel/getRelationshipLabelTamil/
-// getRelationshipPath) rather than calling out to any external chatbot API, so
-// this stays free, private (no family data ever leaves the browser), and as
-// accurate as the app's own already-tuned Tamil kinship logic. Two question
-// shapes are supported:
-//   "How is X related to Y?"      -> a single relationship, plus the path
-//   "Who are X's cousins?"        -> every person whose computed relationship
-//                                     to X contains that word
-// Anything else returns a helpful "I didn't understand that" error rather than
-// guessing — this is pattern-matching, not a real language model.
+// Plain-English question answering over the family tree. The ANSWERING half
+// (this file's resolveAnswer/relationship lookups) always stays local — it
+// reuses the existing relationship engine (getRelationshipLabel/
+// getRelationshipLabelTamil/getRelationshipPath) and never calls out anywhere,
+// so it's free and every family member's actual data never leaves the
+// browser. The PARSING half (turning a freely-worded question into a
+// {type, nameA/nameB/name, relationWord} intent) has two paths:
+//   - parseQuery: a fixed set of regex patterns, entirely local, always
+//     available, but only understands a handful of fixed phrasings.
+//   - parseQueryAI: sends ONLY the question text (never any family data) to
+//     a small Cloudflare Worker proxy (see worker/src/index.js) that asks a
+//     free-tier Groq LLM to extract the same intent shape, understanding far
+//     more phrasings. The Worker (not Firebase Cloud Functions — those
+//     require the paid Blaze plan just to make an outbound call to a non-
+//     Google API) verifies the caller's Firebase ID token before forwarding
+//     anything to Groq, so the shared free-tier quota can't be drained by a
+//     stranger who finds the URL. Falls back to parseQuery automatically if
+//     the Worker is unreachable, not yet deployed, or the quota is exhausted
+//     — the feature never fully breaks without it.
+import { auth } from '../lib/firebase.js';
 import { getDisplayName, getRelationshipLabel, getRelationshipLabelTamil, getRelationshipPath } from './familyUtils.js';
+
+const ASK_WORKER_URL = 'https://family-tree-ask-worker.manikandan-ks-14.workers.dev';
 
 // English plurals that don't just drop a trailing "s" (a naive strip would
 // leave "children"/"grandchildren" unmatched against the engine's singular
@@ -95,6 +106,46 @@ export function parseQuery(raw) {
   if (m) return { type: 'relation-list', name: m[2], relationWord: m[1] };
 
   return { type: 'unknown' };
+}
+
+// AI-assisted parsing — sends ONLY the question text (never any family data)
+// to the Cloudflare Worker (worker/src/index.js), which asks a free-tier LLM
+// to extract the same intent shape parseQuery produces locally, but
+// understands far more phrasings than a fixed set of regexes ever could.
+// Falls back to parseQuery automatically on ANY failure (Worker not deployed
+// yet, signed out, no network, quota exhausted, malformed response) — the
+// feature degrades to the local parser rather than breaking outright.
+// A stalled request (dropped connection, a hung preflight, Groq itself
+// taking unusually long) would otherwise leave the UI on "Thinking…"
+// indefinitely, since fetch() has no built-in timeout — this aborts and
+// falls back to the local parser instead of hanging the panel forever.
+const AI_TIMEOUT_MS = 12000;
+
+export async function parseQueryAI(raw) {
+  const text = (raw || '').trim();
+  if (!text) return { type: 'empty' };
+  try {
+    const idToken = await auth.currentUser?.getIdToken();
+    if (!idToken) throw new Error('Not signed in.');
+    const res = await fetch(ASK_WORKER_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+      body: JSON.stringify({ question: text }),
+      signal: AbortSignal.timeout(AI_TIMEOUT_MS),
+    });
+    if (!res.ok) throw new Error(`Worker responded ${res.status}`);
+    const data = await res.json();
+    if (data?.type === 'relation-between' && data.nameA && data.nameB) {
+      return { type: 'relation-between', nameA: data.nameA, nameB: data.nameB };
+    }
+    if (data?.type === 'relation-list' && data.name && data.relationWord) {
+      return { type: 'relation-list', name: data.name, relationWord: data.relationWord };
+    }
+    if (data?.type === 'unknown') return { type: 'unknown' };
+  } catch (err) {
+    console.warn('parseQueryAI: falling back to local parser', err);
+  }
+  return parseQuery(raw);
 }
 
 // Ranked substring match against display names — exact match wins outright,
