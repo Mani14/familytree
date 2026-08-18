@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { Loader2, Route, Send } from 'lucide-react';
 import { getDisplayName } from '../utils/familyUtils';
-import { parseQueryAI, resolveAnswer } from '../utils/naturalQuery';
+import { parseQueryAI, resolveAnswer, substituteSelfReferences } from '../utils/naturalQuery';
 import Modal from './Modal';
 import '../styles/AskPanel.css';
 
@@ -104,11 +104,14 @@ function AnswerBody({ result, onGo, onShowTree, onResolveAmbiguous }) {
 // terms, Tamil translations, tree paths) always stays entirely local, in the
 // app's own already-tuned relationship engine (naturalQuery.js) — no family
 // data is ever sent anywhere for that part. Understanding the QUESTION itself
-// is AI-assisted (parseQueryAI, via a Cloud Function + a free-tier LLM) so far
-// more phrasings work than a fixed set of regex patterns ever could; only the
-// question text itself is sent for that, never any person's data, and it
+// is AI-assisted (parseQueryAI, via a Cloudflare Worker + a free-tier LLM) so
+// far more phrasings work than a fixed set of regex patterns ever could; only
+// the question text itself is sent for that, never any person's data, and it
 // falls back to the local parser automatically if the AI call fails.
-export default function AskPanel({ persons, isOpen, onClose, onSelectPerson, onShowConnection }) {
+// `selfName` (the signed-in user's own first name, if linked) lets "my
+// cousins"/"related to me" resolve to an actual person — see
+// substituteSelfReferences.
+export default function AskPanel({ persons, isOpen, onClose, onSelectPerson, onShowConnection, selfName }) {
   const [query, setQuery] = useState('');
   // Most-recent-first session log — not persisted, just lets someone ask a
   // follow-up without losing the previous answer off-screen. Each entry gets
@@ -141,9 +144,13 @@ export default function AskPanel({ persons, isOpen, onClose, onSelectPerson, onS
     // wait would look exactly like the earlier "nothing happens" bug.
     setHistory((prev) => [{ id, question: trimmed, parsed: null, chosen: {}, result: { kind: 'pending' } }, ...prev]);
 
+    // "my"/"me" resolved to the signed-in user's own name before parsing —
+    // the history still shows what was actually typed, only the text fed
+    // into the parser is substituted.
+    const forParsing = substituteSelfReferences(trimmed, selfName);
     let parsed;
     try {
-      parsed = await parseQueryAI(trimmed);
+      parsed = await parseQueryAI(forParsing);
     } catch (err) {
       console.error('AskPanel: parseQueryAI threw', err);
       parsed = { type: 'unknown' };

@@ -63,6 +63,20 @@ function labelMatchesRelation(label, relationWord) {
   return words.some((w) => new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(label));
 }
 
+// "Who are MY cousins?" / "how is X related to ME?" — neither parser (local
+// regex or the AI classifier) has any way to know who "my"/"me" refers to,
+// since that's the signed-in user's own identity, not something in the
+// question text itself. Substituting it for their actual first name up front
+// turns it into an ordinary named question ("who are Manikandan's cousins?")
+// that flows through the existing pipeline unchanged — done here, once, so
+// both parseQuery and parseQueryAI benefit without either needing to know
+// about "self" as a concept. Word-boundary matched so this never touches an
+// unrelated word containing "my"/"me" (e.g. "Amy", "Meena").
+export function substituteSelfReferences(text, selfName) {
+  if (!selfName) return text;
+  return text.replace(/\bmy\b/gi, `${selfName}'s`).replace(/\bme\b/gi, selfName);
+}
+
 // Recognizes a small, fixed set of question phrasings — checked in an order
 // where more specific patterns (requiring "related to"/"relationship") come
 // before the generic possessive/`"of"` fallbacks, so e.g. "how is X related to

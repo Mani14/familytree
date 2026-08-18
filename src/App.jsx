@@ -1170,6 +1170,7 @@ export default function App() {
         onClose={() => setShowAskPanel(false)}
         onSelectPerson={handleLocatePerson}
         onShowConnection={runConnection}
+        selfName={getPerson(persons, meId)?.firstName}
       />
 
       {/* Suspense fallback is never actually visible in practice — showFamilyMap only
