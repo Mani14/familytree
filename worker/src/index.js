@@ -20,7 +20,10 @@ const CERTS_TTL_MS = 60 * 60 * 1000; // Google rotates these every few hours at 
 
 async function getGoogleCert(kid) {
   if (!certsCache.certs || Date.now() - certsCache.fetchedAt > CERTS_TTL_MS) {
-    const res = await fetch(FIREBASE_CERTS_URL);
+    // Bounded like the Groq call below — an unbounded fetch here would let a
+    // slow/stalled Google endpoint hang the whole request indefinitely,
+    // which the client-side timeout alone wouldn't make obvious the cause of.
+    const res = await fetch(FIREBASE_CERTS_URL, { signal: AbortSignal.timeout(5000) });
     if (!res.ok) throw new Error(`Could not fetch Google certs: ${res.status}`);
     certsCache = { fetchedAt: Date.now(), certs: await res.json() };
   }

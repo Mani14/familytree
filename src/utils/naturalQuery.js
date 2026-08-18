@@ -138,38 +138,54 @@ export function parseQuery(raw) {
 // Falls back to parseQuery automatically on ANY failure (Worker not deployed
 // yet, signed out, no network, quota exhausted, malformed response) — the
 // feature degrades to the local parser rather than breaking outright.
-// A stalled request (dropped connection, a hung preflight, Groq itself
-// taking unusually long) would otherwise leave the UI on "Thinking…"
-// indefinitely, since fetch() has no built-in timeout — this aborts and
-// falls back to the local parser instead of hanging the panel forever.
-const AI_TIMEOUT_MS = 12000;
+const AI_TIMEOUT_MS = 9000;
+
+// Races an arbitrary promise chain against a hard deadline. AbortSignal only
+// bounds the ONE fetch() it's passed to — it was previously attached solely
+// to the Worker request, but auth.currentUser.getIdToken() runs BEFORE that
+// (and can itself do a network round-trip to silently refresh an expiring
+// token) with nothing bounding it at all, so a stall there hung the whole
+// panel on "Thinking…" forever regardless of the fetch-level fix. Wrapping
+// the entire attempt — token fetch, network call, and response parsing —
+// guarantees parseQueryAI always settles within AI_TIMEOUT_MS no matter
+// which step actually stalls.
+function withDeadline(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(`Timed out after ${ms}ms`)), ms)),
+  ]);
+}
+
+async function callAskWorker(text) {
+  const idToken = await auth.currentUser?.getIdToken();
+  if (!idToken) throw new Error('Not signed in.');
+  const res = await fetch(ASK_WORKER_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+    body: JSON.stringify({ question: text }),
+  });
+  if (!res.ok) throw new Error(`Worker responded ${res.status}`);
+  const data = await res.json();
+  if (data?.type === 'relation-between' && data.nameA && data.nameB) {
+    return { type: 'relation-between', nameA: data.nameA, nameB: data.nameB };
+  }
+  if (data?.type === 'relation-list' && data.name && data.relationWord) {
+    return { type: 'relation-list', name: data.name, relationWord: data.relationWord };
+  }
+  if (data?.type === 'meta') return { type: 'meta' };
+  if (data?.type === 'unknown') return { type: 'unknown' };
+  throw new Error('Unrecognized response shape from Worker.');
+}
 
 export async function parseQueryAI(raw) {
   const text = (raw || '').trim();
   if (!text) return { type: 'empty' };
   try {
-    const idToken = await auth.currentUser?.getIdToken();
-    if (!idToken) throw new Error('Not signed in.');
-    const res = await fetch(ASK_WORKER_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
-      body: JSON.stringify({ question: text }),
-      signal: AbortSignal.timeout(AI_TIMEOUT_MS),
-    });
-    if (!res.ok) throw new Error(`Worker responded ${res.status}`);
-    const data = await res.json();
-    if (data?.type === 'relation-between' && data.nameA && data.nameB) {
-      return { type: 'relation-between', nameA: data.nameA, nameB: data.nameB };
-    }
-    if (data?.type === 'relation-list' && data.name && data.relationWord) {
-      return { type: 'relation-list', name: data.name, relationWord: data.relationWord };
-    }
-    if (data?.type === 'meta') return { type: 'meta' };
-    if (data?.type === 'unknown') return { type: 'unknown' };
+    return await withDeadline(callAskWorker(text), AI_TIMEOUT_MS);
   } catch (err) {
     console.warn('parseQueryAI: falling back to local parser', err);
+    return parseQuery(raw);
   }
-  return parseQuery(raw);
 }
 
 // Ranked substring match against display names — exact match wins outright,
