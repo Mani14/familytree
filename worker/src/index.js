@@ -61,6 +61,9 @@ For "how is X related to Y" / "what is X to Y" / "relationship between X and Y" 
 For "who are X's <relation>" / "list X's <relation>" / "<relation> of X" style questions, asking for every relative of a specific named person matching some category (cousins, children, siblings, uncles, aunts, parents, grandparents, nephews, nieces, grandchildren, etc):
 {"type": "relation-list", "name": "<name as written>", "relationWord": "<the relation word, as asked, singular or plural>"}
 
+For a question asking whose birthday is coming up soon/next, or for a list of upcoming birthdays:
+{"type": "birthday-next"}
+
 For a question ABOUT this tool itself — what it can do, how to use it, a greeting, or any other question that isn't asking about a specific relationship in the tree (e.g. "what can you do", "help", "hi", "what is this"):
 {"type": "meta"}
 
@@ -181,6 +184,9 @@ export default {
     }
     if (parsed?.type === 'meta') {
       return json({ type: 'meta' }, 200, origin);
+    }
+    if (parsed?.type === 'birthday-next') {
+      return json({ type: 'birthday-next' }, 200, origin);
     }
     return json({ type: 'unknown' }, 200, origin);
   },

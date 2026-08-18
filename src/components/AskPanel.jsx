@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { Loader2, Route, Send } from 'lucide-react';
-import { getDisplayName } from '../utils/familyUtils';
+import { formatBirthdayNoYear, getDisplayName } from '../utils/familyUtils';
 import { parseQueryAI, resolveAnswer, substituteSelfReferences } from '../utils/naturalQuery';
 import Modal from './Modal';
 import '../styles/AskPanel.css';
@@ -8,8 +8,14 @@ import '../styles/AskPanel.css';
 const EXAMPLES = [
   'How is Sundari related to Kesavamoorthy?',
   "Who are Manikandan's cousins?",
-  "Who are Kesavamoorthy's children?",
+  'Whose birthday is coming up next?',
 ];
+
+function formatDaysUntil(days) {
+  if (days === 0) return 'Today!';
+  if (days === 1) return 'Tomorrow';
+  return `In ${days} days`;
+}
 
 function AnswerBody({ result, onGo, onShowTree, onResolveAmbiguous }) {
   if (result.kind === 'pending') {
@@ -99,6 +105,23 @@ function AnswerBody({ result, onGo, onShowTree, onResolveAmbiguous }) {
             <li key={p.id}>
               <button type="button" onClick={() => onGo(p.id)}>{getDisplayName(p)}</button>
               <span className="ask-panel-people-label">{label}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
+
+  if (result.kind === 'birthdays') {
+    return (
+      <div className="ask-panel-answer">
+        <ul className="ask-panel-people">
+          {result.upcoming.map(({ person, days }) => (
+            <li key={person.id}>
+              <button type="button" onClick={() => onGo(person.id)}>{getDisplayName(person)}</button>
+              <span className="ask-panel-people-label">
+                {formatDaysUntil(days)} · {formatBirthdayNoYear(person.dob)}
+              </span>
             </li>
           ))}
         </ul>

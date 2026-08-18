@@ -18,7 +18,13 @@
 //     the Worker is unreachable, not yet deployed, or the quota is exhausted
 //     — the feature never fully breaks without it.
 import { auth } from '../lib/firebase.js';
-import { getDisplayName, getRelationshipLabel, getRelationshipLabelTamil, getRelationshipPath } from './familyUtils.js';
+import {
+  getDaysUntilBirthday,
+  getDisplayName,
+  getRelationshipLabel,
+  getRelationshipLabelTamil,
+  getRelationshipPath,
+} from './familyUtils.js';
 
 const ASK_WORKER_URL = 'https://family-tree-ask-worker.manikandan-ks-14.workers.dev';
 
@@ -104,6 +110,14 @@ export function parseQuery(raw) {
     return { type: 'meta' };
   }
 
+  // "Whose birthday is coming next?" / "who has the next birthday?" /
+  // "upcoming birthdays" — no name to extract, just a category of question,
+  // so a single broad keyword match covers this rather than an exhaustive
+  // phrasing list like the relation types need.
+  if (/\bbirthdays?\b/i.test(text) && /\b(next|upcoming|soon|coming)\b/i.test(text)) {
+    return { type: 'birthday-next' };
+  }
+
   let m = /^how\s+(?:is|are)\s+(.+?)\s+related\s+to\s+(.+)$/i.exec(text);
   if (m) return { type: 'relation-between', nameA: m[1], nameB: m[2] };
 
@@ -173,6 +187,7 @@ async function callAskWorker(text) {
     return { type: 'relation-list', name: data.name, relationWord: data.relationWord };
   }
   if (data?.type === 'meta') return { type: 'meta' };
+  if (data?.type === 'birthday-next') return { type: 'birthday-next' };
   if (data?.type === 'unknown') return { type: 'unknown' };
   throw new Error('Unrecognized response shape from Worker.');
 }
@@ -215,7 +230,7 @@ const HELP_MESSAGE =
 // relationship) — describes scope and what data actually exists, so someone
 // asking "what can you do" gets a real answer instead of a rejection.
 const META_MESSAGE =
-  "I can answer two kinds of questions about this family tree: \"How is X related to Y?\" (their relationship, in Tamil and English, plus a button to replay it on the tree) and \"Who are X's cousins/children/siblings/etc?\" (everyone matching that category). I only know what's recorded in this tree — names, gender, birth/death dates, parents, children, and marriages. I don't know jobs, addresses, or anything not entered here, and I can't change any data.";
+  "I can answer questions about this family tree: \"How is X related to Y?\" (their relationship, in Tamil and English, plus a button to replay it on the tree), \"Who are X's cousins/children/siblings/etc?\" (everyone matching that category), and \"Whose birthday is coming up next?\". I only know what's recorded in this tree — names, gender, birth/death dates, parents, children, and marriages. I don't know jobs, addresses, or anything not entered here, and I can't change any data.";
 
 // A name slot pinned to one specific id (see resolveAnswer's `chosen` param)
 // skips findPersonMatches entirely — used when the caller already resolved an
@@ -244,6 +259,20 @@ export function resolveAnswer(persons, parsed, chosen = {}) {
   if (!parsed || parsed.type === 'empty') return { kind: 'empty' };
   if (parsed.type === 'meta') return { kind: 'meta', message: META_MESSAGE };
   if (parsed.type === 'unknown') return { kind: 'error', message: `I didn't understand that. ${HELP_MESSAGE}` };
+
+  if (parsed.type === 'birthday-next') {
+    // Same isAlive filter and sort BirthdayWidget already uses — deceased
+    // family members don't have an "upcoming" birthday to report.
+    const today = new Date();
+    const upcoming = Object.values(persons)
+      .filter((p) => !p.isPlaceholder && p.isAlive)
+      .map((p) => ({ person: p, days: getDaysUntilBirthday(p.dob, today) }))
+      .filter((e) => e.days != null)
+      .sort((a, b) => a.days - b.days)
+      .slice(0, 5);
+    if (!upcoming.length) return { kind: 'error', message: "No one's birth date is recorded, so I can't tell." };
+    return { kind: 'birthdays', upcoming };
+  }
 
   if (parsed.type === 'relation-between') {
     const aMatches = resolveNameSlot(persons, parsed.nameA, chosen.nameA);
