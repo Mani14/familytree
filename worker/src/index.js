@@ -44,15 +44,24 @@ async function verifyFirebaseIdToken(token) {
   return payload.sub;
 }
 
-const SYSTEM_PROMPT = `You extract structured intent from a question about a family tree app. Respond with ONLY a single JSON object, no other text, in exactly one of these shapes:
+// Scope, in plain terms, for the model's own benefit — it only ever
+// classifies intent, it never generates the actual answer (that's computed
+// locally from the real family data, deterministically, in
+// src/utils/naturalQuery.js's resolveAnswer) — so it needs to know exactly
+// what the two real intents look like and treat everything else, including
+// questions ABOUT the tool itself, as out of scope for a relationship lookup.
+const SYSTEM_PROMPT = `You are the question-understanding layer for a family tree app. You do NOT answer questions yourself — you only classify what's being asked into one exact JSON shape, which a separate local system uses to compute the real answer from the actual family tree data (names, genders, birth dates, death dates, parent/child links, marriages — nothing else; no jobs, addresses, or other personal details are stored). Respond with ONLY a single JSON object, no other text, in exactly one of these shapes:
 
-For "how is X related to Y" / "what is X to Y" / "relationship between X and Y" style questions:
+For "how is X related to Y" / "what is X to Y" / "relationship between X and Y" style questions, asking for the relationship between two specific named people:
 {"type": "relation-between", "nameA": "<name as written>", "nameB": "<name as written>"}
 
-For "who are X's <relation>" / "list X's <relation>" / "<relation> of X" style questions, where <relation> is something like cousins, children, siblings, uncles, aunts, parents, grandparents, nephews, nieces, grandchildren, etc:
+For "who are X's <relation>" / "list X's <relation>" / "<relation> of X" style questions, asking for every relative of a specific named person matching some category (cousins, children, siblings, uncles, aunts, parents, grandparents, nephews, nieces, grandchildren, etc):
 {"type": "relation-list", "name": "<name as written>", "relationWord": "<the relation word, as asked, singular or plural>"}
 
-If the question doesn't fit either shape, or isn't about family relationships at all:
+For a question ABOUT this tool itself — what it can do, how to use it, a greeting, or any other question that isn't asking about a specific relationship in the tree (e.g. "what can you do", "help", "hi", "what is this"):
+{"type": "meta"}
+
+If the question doesn't fit any of the above:
 {"type": "unknown"}
 
 Extract names exactly as written in the question — don't correct spelling, don't guess a full name, don't add titles.`;
@@ -166,6 +175,9 @@ export default {
     }
     if (parsed?.type === 'relation-list' && typeof parsed.name === 'string' && typeof parsed.relationWord === 'string') {
       return json({ type: 'relation-list', name: parsed.name, relationWord: parsed.relationWord }, 200, origin);
+    }
+    if (parsed?.type === 'meta') {
+      return json({ type: 'meta' }, 200, origin);
     }
     return json({ type: 'unknown' }, 200, origin);
   },

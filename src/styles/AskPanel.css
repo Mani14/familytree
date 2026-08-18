@@ -167,6 +167,13 @@
   color: var(--color-text-muted);
 }
 
+.ask-panel-meta {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--color-text);
+}
+
 .ask-panel-name {
   padding: 0;
   border: none;

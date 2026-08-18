@@ -81,6 +81,15 @@ export function parseQuery(raw) {
     .trim();
   if (!text) return { type: 'empty' };
 
+  // A question ABOUT the tool itself, not about a relationship in the tree —
+  // checked before anything else so "help" or "hi" doesn't fall through to a
+  // relation-list match on a leftover "'s" pattern by accident. Kept as a
+  // small fixed list (not the AI classifier's job here) so this still works
+  // even when parseQueryAI can't reach the Worker at all.
+  if (/^(hi|hey|hello|help|what can you do|what do you do|what is this)$/i.test(text)) {
+    return { type: 'meta' };
+  }
+
   let m = /^how\s+(?:is|are)\s+(.+?)\s+related\s+to\s+(.+)$/i.exec(text);
   if (m) return { type: 'relation-between', nameA: m[1], nameB: m[2] };
 
@@ -141,6 +150,7 @@ export async function parseQueryAI(raw) {
     if (data?.type === 'relation-list' && data.name && data.relationWord) {
       return { type: 'relation-list', name: data.name, relationWord: data.relationWord };
     }
+    if (data?.type === 'meta') return { type: 'meta' };
     if (data?.type === 'unknown') return { type: 'unknown' };
   } catch (err) {
     console.warn('parseQueryAI: falling back to local parser', err);
@@ -171,6 +181,12 @@ export function findPersonMatches(persons, nameText) {
 const HELP_MESSAGE =
   'Try "How is X related to Y?" or "Who are X\'s cousins?" — first/last names both work.';
 
+// Shown for a "meta" question (about the tool itself, not a specific
+// relationship) — describes scope and what data actually exists, so someone
+// asking "what can you do" gets a real answer instead of a rejection.
+const META_MESSAGE =
+  "I can answer two kinds of questions about this family tree: \"How is X related to Y?\" (their relationship, in Tamil and English, plus a button to replay it on the tree) and \"Who are X's cousins/children/siblings/etc?\" (everyone matching that category). I only know what's recorded in this tree — names, gender, birth/death dates, parents, children, and marriages. I don't know jobs, addresses, or anything not entered here, and I can't change any data.";
+
 // A name slot pinned to one specific id (see resolveAnswer's `chosen` param)
 // skips findPersonMatches entirely — used when the caller already resolved an
 // earlier ambiguity ("did you mean Ilan Velmurugan or Ilango Unknown?") and is
@@ -196,6 +212,7 @@ function resolveNameSlot(persons, nameText, chosenId) {
 // for resolving one of the ambiguous cases above without re-parsing the text.
 export function resolveAnswer(persons, parsed, chosen = {}) {
   if (!parsed || parsed.type === 'empty') return { kind: 'empty' };
+  if (parsed.type === 'meta') return { kind: 'meta', message: META_MESSAGE };
   if (parsed.type === 'unknown') return { kind: 'error', message: `I didn't understand that. ${HELP_MESSAGE}` };
 
   if (parsed.type === 'relation-between') {

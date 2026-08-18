@@ -24,6 +24,10 @@ function AnswerBody({ result, onGo, onShowTree, onResolveAmbiguous }) {
     return <p className="ask-panel-error">{result.message}</p>;
   }
 
+  if (result.kind === 'meta') {
+    return <p className="ask-panel-meta">{result.message}</p>;
+  }
+
   if (result.kind === 'ambiguous') {
     return (
       <div className="ask-panel-answer">
