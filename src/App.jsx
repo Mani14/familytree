@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowLeft, Check, Compass, GitBranch, Languages, Link2, LocateFixed, LogOut, Map, Menu, PlayCircle, Redo2, Route, ShieldAlert, ShieldCheck, Sparkles, Undo2, X } from 'lucide-react';
+import { ArrowLeft, Check, Compass, GitBranch, Languages, Link2, LocateFixed, LogOut, Map, MessageCircleQuestion, Menu, PlayCircle, Redo2, Route, ShieldAlert, ShieldCheck, Sparkles, Undo2, X } from 'lucide-react';
 import { useFamily } from './hooks/useFamily';
 import { useAuth } from './hooks/useAuth';
 import { useAdmin } from './hooks/useAdmin';
@@ -20,6 +20,7 @@ import ImportExport from './components/ImportExport';
 import ThemeToggle from './components/ThemeToggle';
 import StatsPanel from './components/StatsPanel';
 import DataHealthPanel from './components/DataHealthPanel';
+import AskPanel from './components/AskPanel';
 import AdminPanel from './components/AdminPanel';
 import MobileMenu from './components/MobileMenu';
 import ConfirmDialog from './components/ConfirmDialog';
@@ -107,6 +108,7 @@ export default function App() {
   const [showFamilyMap, setShowFamilyMap] = useState(false);
   const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [showRelationshipRules, setShowRelationshipRules] = useState(false);
+  const [showAskPanel, setShowAskPanel] = useState(false);
   // { personId, anchorId, signature, currentTerm, baseRelationship } while the
   // edit-relationship dialog is open, or null when closed.
   const [editRelationshipState, setEditRelationshipState] = useState(null);
@@ -603,9 +605,10 @@ export default function App() {
     advanceTravel();
   }, [advanceTravel]);
 
-  const handleConnectionPicked = useCallback((toId) => {
-    const fromId = findConnectionFromId;
-    setFindConnectionFromId(null);
+  // Shared by the Find Connection picker AND the Ask panel's "Show on tree"
+  // button — both just need to feed two ids in, and get the same travel
+  // animation + persistent connection-result toast out.
+  const runConnection = useCallback((fromId, toId) => {
     const path = getRelationshipPath(persons, fromId, toId);
     if (!path) {
       window.alert('No direct blood or marriage connection found between these two people.');
@@ -618,7 +621,13 @@ export default function App() {
     setHighlightedChain(path);
     setConnectionResult({ fromId, toId });
     handleTravelPath(path);
-  }, [persons, findConnectionFromId, handleTravelPath]);
+  }, [persons, handleTravelPath]);
+
+  const handleConnectionPicked = useCallback((toId) => {
+    const fromId = findConnectionFromId;
+    setFindConnectionFromId(null);
+    runConnection(fromId, toId);
+  }, [findConnectionFromId, runConnection]);
 
   // Called by FamilyTree when a locate target isn't drawn in the current view (e.g. a
   // trimmed satellite person like Ramesh in the Full Tree, or someone married-in
@@ -817,6 +826,15 @@ export default function App() {
         >
           <Languages size={17} />
         </button>
+        <button
+          type="button"
+          className="icon-btn desktop-header-item"
+          onClick={() => setShowAskPanel(true)}
+          aria-label="Ask about the family"
+          title="Ask a plain-English question, e.g. 'How is X related to Y?'"
+        >
+          <MessageCircleQuestion size={17} />
+        </button>
         {isAdmin && (
           <button
             type="button"
@@ -856,6 +874,7 @@ export default function App() {
           onOpenFeatures={() => setShowFeatureShowcase(true)}
           onOpenFamilyMap={() => setShowFamilyMap(true)}
           onOpenRelationshipRules={() => setShowRelationshipRules(true)}
+          onOpenAsk={() => setShowAskPanel(true)}
           onOpenAdmin={() => setShowAdminPanel(true)}
           isAdmin={isAdmin}
           familyMapEnabled={appSettings.features.familyMap}
@@ -1144,6 +1163,14 @@ export default function App() {
       )}
 
       <StatsPanel persons={persons} isOpen={showStatsPanel} onClose={() => setShowStatsPanel(false)} onSelect={handleLocatePerson} />
+
+      <AskPanel
+        persons={persons}
+        isOpen={showAskPanel}
+        onClose={() => setShowAskPanel(false)}
+        onSelectPerson={handleLocatePerson}
+        onShowConnection={runConnection}
+      />
 
       {/* Suspense fallback is never actually visible in practice — showFamilyMap only
           flips true when the user clicks the header/menu button, and lazy chunks this
