@@ -84,6 +84,15 @@
   border-radius: var(--radius-sm);
 }
 
+/* The header's own icon-only buttons hide their text label below 900px (see
+   App.css) since a phone-width header has no room for it — but this is
+   already the mobile menu's own full-width row, matching every other item
+   here (Family Map, Full Stats, ...), so its label should stay visible too
+   instead of showing as a bare icon + chevron. */
+.mobile-menu-nested .import-export-trigger .btn-label {
+  display: inline;
+}
+
 @media (max-width: 640px) {
   .mobile-menu {
     display: flex;

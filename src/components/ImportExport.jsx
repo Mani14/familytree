@@ -6,7 +6,7 @@ import { validateFamilyData } from '../utils/familyUtils';
 import ConfirmDialog from './ConfirmDialog';
 import '../styles/ImportExport.css';
 
-export default function ImportExport({ exportData, onImport, onExportImage, onExportPDF }) {
+export default function ImportExport({ exportData, onImport, onExportImage, onExportPDF, label = 'Data' }) {
   const fileInputRef = useRef(null);
   const triggerRef = useRef(null);
   const menuRef = useRef(null);
@@ -106,7 +106,7 @@ export default function ImportExport({ exportData, onImport, onExportImage, onEx
         title="Import / export"
       >
         <Download size={17} />
-        <span className="btn-label">Data</span>
+        <span className="btn-label">{label}</span>
         <ChevronDown size={14} className={`import-export-chevron ${open ? 'is-open' : ''}`} />
       </button>
 

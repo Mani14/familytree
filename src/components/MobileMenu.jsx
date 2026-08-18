@@ -100,16 +100,11 @@ export default function MobileMenu({
               <button type="button" role="menuitem" onClick={() => { onOpenStats(); close(); }}>
                 <Menu size={15} /> Full Stats
               </button>
-              {isAdmin && (
-                <button type="button" role="menuitem" onClick={() => { onOpenDataHealth(); close(); }}>
-                  <ShieldCheck size={15} /> Data Quality
-                </button>
-              )}
-              <button type="button" role="menuitem" onClick={() => { onOpenRelationshipRules(); close(); }}>
-                <Languages size={15} /> Relationship Rules
-              </button>
               <button type="button" role="menuitem" onClick={() => { onOpenAsk(); close(); }}>
                 <MessageCircleQuestion size={15} /> Ask About the Family
+              </button>
+              <button type="button" role="menuitem" onClick={() => { onOpenRelationshipRules(); close(); }}>
+                <Languages size={15} /> Relationship Rules
               </button>
               <div className="mobile-menu-nested" role="menuitem">
                 <ImportExport
@@ -117,6 +112,7 @@ export default function MobileMenu({
                   onImport={onImport}
                   onExportImage={onExportImage}
                   onExportPDF={onExportPDF}
+                  label="Download"
                 />
               </div>
               <button type="button" role="menuitem" onClick={() => { onToggleViewMode(); close(); }}>
@@ -128,6 +124,11 @@ export default function MobileMenu({
               {isAdmin && (
                 <button type="button" role="menuitem" onClick={() => { onOpenAdmin(); close(); }}>
                   <ShieldAlert size={15} /> Admin Settings
+                </button>
+              )}
+              {isAdmin && (
+                <button type="button" role="menuitem" onClick={() => { onOpenDataHealth(); close(); }}>
+                  <ShieldCheck size={15} /> Data Quality
                 </button>
               )}
               <button type="button" role="menuitem" className="mobile-menu-signout" onClick={() => { onSignOut(); close(); }}>
