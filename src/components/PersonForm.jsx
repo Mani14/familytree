@@ -175,16 +175,18 @@ export default function PersonForm({
                 {(form.firstName[0] || '') + (form.lastName[0] || '') || '?'}
               </span>
             )}
-            <label className="person-form-photo-edit" title="Change photo">
-              <Camera size={13} />
+          </div>
+          <div className="person-form-photo-actions">
+            <label className="person-form-photo-update">
+              <Camera size={13} /> Update Photo
               <input type="file" accept="image/*" onChange={handlePhotoChange} />
             </label>
+            {form.photo && (
+              <button type="button" className="person-form-photo-remove" onClick={() => setField('photo', '')}>
+                Remove Photo
+              </button>
+            )}
           </div>
-          {form.photo && (
-            <button type="button" className="person-form-photo-remove" onClick={() => setField('photo', '')}>
-              Remove photo
-            </button>
-          )}
         </div>
 
         <div className="person-form-section">
@@ -213,7 +215,6 @@ export default function PersonForm({
             <input
               value={form.petName}
               onChange={(e) => setField('petName', e.target.value)}
-              placeholder="e.g. Sambu"
               autoCapitalize="words"
             />
           </label>
@@ -331,6 +332,20 @@ export default function PersonForm({
         </div>
 
         <div className="person-form-section">
+          <span className="person-form-section-title">Location (optional)</span>
+          <label>
+            <span className="person-form-visually-hidden">Location</span>
+            <LocationInput
+              value={form.location}
+              lat={form.locationLat}
+              lng={form.locationLng}
+              approximate={form.locationApproximate}
+              onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
+            />
+          </label>
+        </div>
+
+        <div className="person-form-section">
           <span className="person-form-section-title">Contact</span>
           <div className="person-form-row">
             <label>
@@ -348,16 +363,6 @@ export default function PersonForm({
               <input type="email" value={form.email} onChange={(e) => setField('email', e.target.value)} />
             </label>
           </div>
-          <label>
-            Location (optional)
-            <LocationInput
-              value={form.location}
-              lat={form.locationLat}
-              lng={form.locationLng}
-              approximate={form.locationApproximate}
-              onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
-            />
-          </label>
         </div>
 
         <div className="person-form-section">

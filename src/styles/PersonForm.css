@@ -9,6 +9,22 @@
   font-size: 18px;
 }
 
+/* Keeps a field's accessible name for screen readers when the visible label
+   text would just repeat the section title right above it (e.g. "Location"
+   section, "Location" label) — same off-screen-not-hidden technique the
+   toggle switch's real checkbox already uses below. */
+.person-form-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .person-form-error {
   margin: 0;
   padding: 8px 12px;
@@ -62,31 +78,36 @@
   gap: 12px;
 }
 
-/* A custom clear (x) button overlaid on date fields — iOS Safari's own native
+/* A custom clear (x) button next to date fields — iOS Safari's own native
    "Clear" control under the date wheel picker is unreliable (tapping it
    sometimes fails to fire a change event React picks up, silently reverting
-   to the old value), so this gives a clear-path that always works. */
+   to the old value), so this gives a clear path that always works.
+   Deliberately a separate sibling button, NOT overlaid on top of the input's
+   own box (an earlier version placed it there via absolute positioning) —
+   iOS Safari's native date/time control claims its entire bounding box for
+   its own touch handling, so a button layered on top of it never actually
+   receives the tap on iPhone even though it looks tappable and works fine
+   everywhere else. */
 .person-form-date-field {
-  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .person-form-date-field input {
-  width: 100%;
-  padding-right: 34px;
+  flex: 1;
+  min-width: 0;
 }
 
 .person-form-date-clear {
-  position: absolute;
-  top: 50%;
-  right: 6px;
-  transform: translateY(-50%);
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
   padding: 0;
-  border: none;
+  border: 1.5px solid var(--color-border);
   border-radius: 50%;
   background: var(--color-bg);
   color: var(--color-text-muted);
@@ -251,36 +272,44 @@
   text-transform: uppercase;
 }
 
-/* Small camera badge overlapping the avatar's edge — sized just big enough to tap,
-   not sprawling across the avatar itself (see the mini-card-jump hit-zone rule). */
-.person-form-photo-edit {
-  position: absolute;
-  right: -2px;
-  bottom: -2px;
+/* Avatar circle shows only the photo (or initials) — no overlaid badge, which
+   either got missed entirely in a corner or, centred, ended up covering the
+   very initials/photo it was meant to sit alongside. The actual actions live
+   below as plain text, same visual language as "Remove Photo" already used. */
+.person-form-photo-actions {
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  background: var(--color-primary);
-  color: #fff;
-  border: 2px solid var(--color-surface);
+  gap: 4px;
+}
+
+/* Extra `.person-form-photo-actions` ancestor class, not just the element's
+   own class, so this beats the general ".person-form label" rule (every
+   other field label in this form) that would otherwise win on specificity
+   and force flex-direction: column here too, stacking the icon above the
+   text instead of beside it. */
+.person-form-photo-actions .person-form-photo-update {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 5px;
+  position: relative;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-primary);
   cursor: pointer;
-  transition: transform var(--duration-fast) var(--ease);
+  padding: 2px 4px;
 }
 
-@media (hover: hover) {
-  .person-form-photo-edit:hover {
-    transform: scale(1.08);
-  }
-}
-
-.person-form-photo-edit input {
+.person-form-photo-update input {
   position: absolute;
   inset: 0;
   opacity: 0;
   cursor: pointer;
+}
+
+.person-form-photo-actions .person-form-photo-remove {
+  padding-left: 4px;
+  border-left: 1px solid var(--color-border);
 }
 
 .person-form-photo-remove {
@@ -288,7 +317,7 @@
   font-weight: 600;
   border: none;
   background: transparent;
-  color: var(--color-primary);
+  color: var(--color-text-muted);
   cursor: pointer;
   padding: 2px 4px;
 }

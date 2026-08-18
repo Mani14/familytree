@@ -813,6 +813,12 @@ const ENGLISH_SPOUSE_MIRROR = {
 // fallback recurses into the others (via cycle-protected `visiting`) so a
 // chain of any length resolves correctly, not just one hop of composability.
 function resolveEnglishTermChained(persons, personId, rootId, visiting) {
+  // See resolveTamilTermChained's matching guard — the fallback layers below
+  // (sibling-inheritance especially) don't independently know that personId
+  // === rootId means "no real relationship to compute", so without this a
+  // sibling's own valid term gets misattributed as your relationship to
+  // yourself when viewing your own profile.
+  if (personId === rootId) return null;
   if (visiting.has(personId)) return null;
   visiting.add(personId);
   try {
@@ -1544,6 +1550,16 @@ const CROSS_COUSIN_WORDS = new Set(['மைத்துனன்/மச்சா
 // purely to stop that from infinite-looping mutual spouses/siblings, not
 // because legitimate chains are expected to revisit anyone.
 function resolveTamilTermChained(persons, personId, rootId, overrides, visiting) {
+  // A person's relationship to themselves is never a real thing to compute —
+  // computePrimaryTamilTerm already returns null for this below, but the
+  // fallback layers don't independently know that: fallback #2, for
+  // instance, walks personId's OWN siblings and returns THEIR (perfectly
+  // valid) term relative to root — which, when personId === rootId, means
+  // returning your own sibling's term as if it were your relationship to
+  // yourself (e.g. viewing your own profile showing you tagged as your
+  // sister's term, "Sister (to you)"). Short-circuiting here, before any
+  // fallback runs, is the only place that's true for every fallback at once.
+  if (personId === rootId) return null;
   if (visiting.has(personId)) return null;
   visiting.add(personId);
   try {
