@@ -376,6 +376,33 @@ export function useFamily() {
     });
   }, [pushHistory]);
 
+  // Replaces an auto-created "Unknown Parent" placeholder (see addSibling above)
+  // with an already-recorded real person, once it turns out that real person was
+  // already added to the tree separately — used by fillPlaceholderParent's own
+  // "Link Existing" tab. Re-parents every one of the placeholder's children onto
+  // the real person (not just one, since a placeholder can be shared by an entire
+  // sibling group) and then removes the now-redundant placeholder outright, rather
+  // than leaving an orphaned stub behind.
+  const mergePlaceholder = useCallback((placeholderId, existingId) => {
+    pushHistory();
+    setPersons((prev) => {
+      const placeholder = prev[placeholderId];
+      const existing = prev[existingId];
+      if (!placeholder?.isPlaceholder || !existing) return prev;
+      const kids = placeholder.childrenIds.filter((cid) => prev[cid]);
+      const next = { ...prev };
+      for (const cid of kids) {
+        next[cid] = {
+          ...next[cid],
+          parentIds: next[cid].parentIds.map((pid) => (pid === placeholderId ? existingId : pid)),
+        };
+      }
+      next[existingId] = { ...existing, childrenIds: [...new Set([...existing.childrenIds, ...kids])] };
+      delete next[placeholderId];
+      return next;
+    });
+  }, [pushHistory]);
+
   // Clears a mutual spouse link (both sides), including any recorded marriage date.
   // Neither person is deleted — just the relationship between them.
   const removeSpouse = useCallback((personId) => {
@@ -521,6 +548,7 @@ export function useFamily() {
     addParent,
     addSibling,
     linkExisting,
+    mergePlaceholder,
     removeSpouse,
     removeParent,
     removeChild,

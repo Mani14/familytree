@@ -5,7 +5,8 @@ import { MapContainer, Marker, Popup, TileLayer, Tooltip, useMap, useMapEvents }
 import 'leaflet/dist/leaflet.css';
 import { getDisplayName, getFullName } from '../utils/familyUtils';
 import { useTheme } from '../hooks/useTheme';
-import { dotIcon, TILE_ATTRIBUTION, TILE_URLS } from '../utils/mapTiles';
+import { dotIcon } from '../utils/mapMarkers';
+import { TILE_ATTRIBUTION, TILE_URLS } from '../utils/mapTiles';
 import Modal from './Modal';
 import '../styles/FamilyMap.css';
 

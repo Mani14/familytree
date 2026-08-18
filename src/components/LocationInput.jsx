@@ -1,16 +1,11 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { LocateFixed, MapPin } from 'lucide-react';
+import { LocateFixed } from 'lucide-react';
 import { useRef, useState } from 'react';
-import { MapContainer, Marker, TileLayer, useMapEvents } from 'react-leaflet';
-import 'leaflet/dist/leaflet.css';
-import { useTheme } from '../hooks/useTheme';
-import { dotIcon, reverseGeocode, searchPlaces, TILE_ATTRIBUTION, TILE_URLS } from '../utils/mapTiles';
+import { reverseGeocode, searchPlaces } from '../utils/mapTiles';
 import '../styles/LocationInput.css';
 
 const SEARCH_DEBOUNCE_MS = 600;
 const MIN_QUERY_LENGTH = 3;
-const DEFAULT_CENTER = [20.5937, 78.9629]; // India — a reasonable default given this app's userbase
-const DEFAULT_ZOOM = 5;
 // A single getCurrentPosition call, even with enableHighAccuracy, often returns
 // whatever fix (cell/Wi-Fi-based, sometimes off by kilometers) the device has on
 // hand the instant GPS starts warming up, rather than waiting for an actual GPS
@@ -39,24 +34,15 @@ const LOCATION_BLOCKED_STEPS = [
   'On phones, the browser app itself also needs OS-level location access — check Settings → Privacy → Location Services (iOS) or Settings → Apps → [Browser] → Permissions (Android).',
 ];
 
-// Reports every click's lat/lng up to the parent — has no visual output of its
-// own, it just taps into the surrounding MapContainer's events.
-function ClickCapture({ onPick }) {
-  useMapEvents({ click: (e) => onPick(e.latlng.lat, e.latlng.lng) });
-  return null;
-}
-
-// One location per person, settable three ways: type-to-search (Nominatim),
-// "Use My Current Location" (browser Geolocation + reverse geocode), or
-// "Point to Map" (click a spot on an embedded mini map). All three converge on
-// the same onChange({ location, locationLat, locationLng }) shape.
+// One location per person, settable two ways: type-to-search (Nominatim), or
+// "Use My Current Location" (browser Geolocation + reverse geocode). Both
+// converge on the same onChange({ location, locationLat, locationLng }) shape.
 export default function LocationInput({ value, lat, lng, approximate, onChange }) {
   const [query, setQuery] = useState(value || '');
   const [results, setResults] = useState([]);
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [showMap, setShowMap] = useState(false);
   const [accuracy, setAccuracy] = useState(null);
   const [gpsWaiting, setGpsWaiting] = useState(false);
   const [blocked, setBlocked] = useState(false);
@@ -65,7 +51,6 @@ export default function LocationInput({ value, lat, lng, approximate, onChange }
   // where this same flag shows up permanently on their profile too.
   const [imprecise, setImprecise] = useState(!!approximate);
   const debounceRef = useRef(null);
-  const theme = useTheme();
 
   const runSearch = (text) => {
     clearTimeout(debounceRef.current);
@@ -217,11 +202,6 @@ export default function LocationInput({ value, lat, lng, approximate, onChange }
     timeoutId = setTimeout(finish, GPS_MAX_WAIT_MS);
   };
 
-  const pickOnMap = (pickedLat, pickedLng) => {
-    setShowMap(false);
-    applyPoint(pickedLat, pickedLng);
-  };
-
   const hasCoords = lat != null && lng != null;
 
   return (
@@ -262,9 +242,6 @@ export default function LocationInput({ value, lat, lng, approximate, onChange }
         <button type="button" onClick={useCurrentLocation} disabled={loading}>
           <LocateFixed size={13} /> Use My Current Location
         </button>
-        <button type="button" onClick={() => setShowMap((v) => !v)}>
-          <MapPin size={13} /> {showMap ? 'Close Map' : 'Point to Map'}
-        </button>
       </div>
 
       {gpsWaiting && <p className="location-input-hint">Getting an accurate GPS fix… (up to {GPS_MAX_WAIT_MS / 1000}s)</p>}
@@ -291,21 +268,6 @@ export default function LocationInput({ value, lat, lng, approximate, onChange }
           Pinned at {lat.toFixed(4)}, {lng.toFixed(4)}
           {accuracy != null ? ` (accurate to ~${Math.round(accuracy)}m)` : ''}
         </p>
-      )}
-
-      {showMap && (
-        <div className="location-input-map">
-          <MapContainer
-            center={hasCoords ? [lat, lng] : DEFAULT_CENTER}
-            zoom={hasCoords ? 12 : DEFAULT_ZOOM}
-            style={{ height: '180px', width: '100%' }}
-          >
-            <TileLayer url={TILE_URLS[theme] || TILE_URLS.light} attribution={TILE_ATTRIBUTION} />
-            {hasCoords && <Marker position={[lat, lng]} icon={dotIcon('var(--color-focus)')} />}
-            <ClickCapture onPick={pickOnMap} />
-          </MapContainer>
-          <p className="location-input-map-hint">Click anywhere on the map to set the location.</p>
-        </div>
       )}
     </div>
   );

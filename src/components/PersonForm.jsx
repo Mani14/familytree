@@ -1,14 +1,9 @@
-import { lazy, Suspense, useMemo, useState } from 'react';
-import { Camera } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Camera, X } from 'lucide-react';
 import { getDisplayName, getEligibleLinkCandidates } from '../utils/familyUtils';
+import LocationInput from './LocationInput';
 import Modal from './Modal';
 import '../styles/PersonForm.css';
-
-// Lazy: pulls in leaflet/react-leaflet (~150-200KB) for the "Point to Map"
-// picker, which would otherwise load on every add/edit-person open — one of
-// the most common actions in the app — even when nobody touches the location
-// field this time.
-const LocationInput = lazy(() => import('./LocationInput'));
 
 const emptyForm = {
   firstName: '',
@@ -85,6 +80,10 @@ export default function PersonForm({
   const canLinkExisting = !!(relation && persons && personId && onLinkExisting);
   const [tab, setTab] = useState('new');
   const [linkQuery, setLinkQuery] = useState('');
+  // Date of death is often only known to the year (e.g. from an old family
+  // record) — this toggles the field between a full date picker and a plain
+  // 4-digit year input, seeded from whatever shape the saved value already is.
+  const [dodYearOnly, setDodYearOnly] = useState(() => /^\d{4}$/.test(initialPerson?.dod || ''));
 
   const candidates = useMemo(() => {
     if (!canLinkExisting || tab !== 'link') return [];
@@ -239,7 +238,14 @@ export default function PersonForm({
             </label>
             <label>
               Date of birth (optional)
-              <input type="date" value={form.dob} onChange={(e) => setField('dob', e.target.value)} />
+              <div className="person-form-date-field">
+                <input type="date" value={form.dob} onChange={(e) => setField('dob', e.target.value)} />
+                {form.dob && (
+                  <button type="button" className="person-form-date-clear" aria-label="Clear date of birth" onClick={() => setField('dob', '')}>
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
             </label>
           </div>
 
@@ -247,11 +253,18 @@ export default function PersonForm({
             {showMarriageDate && (
               <label>
                 Marriage date (optional)
-                <input
-                  type="date"
-                  value={form.marriageDate}
-                  onChange={(e) => setField('marriageDate', e.target.value)}
-                />
+                <div className="person-form-date-field">
+                  <input
+                    type="date"
+                    value={form.marriageDate}
+                    onChange={(e) => setField('marriageDate', e.target.value)}
+                  />
+                  {form.marriageDate && (
+                    <button type="button" className="person-form-date-clear" aria-label="Clear marriage date" onClick={() => setField('marriageDate', '')}>
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
               </label>
             )}
             <label className="person-form-toggle">
@@ -266,10 +279,54 @@ export default function PersonForm({
           </div>
 
           {!form.isAlive && (
-            <label>
-              Date of death (optional)
-              <input type="date" value={form.dod} onChange={(e) => setField('dod', e.target.value)} />
-            </label>
+            <div className="person-form-row">
+              <label>
+                Date of death (optional)
+                {dodYearOnly ? (
+                  <div className="person-form-date-field">
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      placeholder="YYYY"
+                      min="1000"
+                      max="9999"
+                      value={form.dod}
+                      onChange={(e) => setField('dod', e.target.value.slice(0, 4))}
+                    />
+                    {form.dod && (
+                      <button type="button" className="person-form-date-clear" aria-label="Clear date of death" onClick={() => setField('dod', '')}>
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="person-form-date-field">
+                    <input type="date" value={form.dod} onChange={(e) => setField('dod', e.target.value)} />
+                    {form.dod && (
+                      <button type="button" className="person-form-date-clear" aria-label="Clear date of death" onClick={() => setField('dod', '')}>
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+                )}
+              </label>
+              <label className="person-form-toggle">
+                <input
+                  type="checkbox"
+                  checked={dodYearOnly}
+                  onChange={(e) => {
+                    const yearOnly = e.target.checked;
+                    setDodYearOnly(yearOnly);
+                    // A year alone can't become a full date, and a full date's
+                    // exact day shouldn't survive switching to "year only" as if
+                    // it were still known — clear rather than guess either way.
+                    setField('dod', yearOnly ? (form.dod.slice(0, 4) || '') : '');
+                  }}
+                />
+                <span className="person-form-toggle-track"><span className="person-form-toggle-thumb" /></span>
+                Year only
+              </label>
+            </div>
           )}
         </div>
 
@@ -293,15 +350,13 @@ export default function PersonForm({
           </div>
           <label>
             Location (optional)
-            <Suspense fallback={<input type="text" disabled placeholder="Loading…" />}>
-              <LocationInput
-                value={form.location}
-                lat={form.locationLat}
-                lng={form.locationLng}
-                approximate={form.locationApproximate}
-                onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
-              />
-            </Suspense>
+            <LocationInput
+              value={form.location}
+              lat={form.locationLat}
+              lng={form.locationLng}
+              approximate={form.locationApproximate}
+              onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
+            />
           </label>
         </div>
 

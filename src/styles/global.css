@@ -212,10 +212,10 @@ button,
   }
 }
 
-/* Simple colored-dot Leaflet marker (see mapTiles.js's dotIcon), used by both
-   LocationInput's "Point to Map" picker and the Family Map view — Leaflet's
-   default PNG marker icon doesn't resolve correctly under Vite without extra
-   bundler config, so a plain divIcon sidesteps that entirely. */
+/* Simple colored-dot Leaflet marker (see mapTiles.js's dotIcon), used by the
+   Family Map view — Leaflet's default PNG marker icon doesn't resolve
+   correctly under Vite without extra bundler config, so a plain divIcon
+   sidesteps that entirely. */
 .map-dot-icon span {
   display: block;
   border-radius: 50%;

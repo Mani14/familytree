@@ -73,6 +73,7 @@ export default function App() {
     addParent,
     addSibling,
     linkExisting,
+    mergePlaceholder,
     removeSpouse,
     removeParent,
     removeChild,
@@ -338,7 +339,12 @@ export default function App() {
     if (!formState) return;
     if (formState.mode === 'edit') {
       const person = getPerson(persons, formState.personId);
-      updatePerson(formState.personId, data);
+      // A Data Health Check "Incomplete placeholder" issue is reached by
+      // selecting the placeholder and using the normal Edit button, not just
+      // the tree's dedicated "Add father/mother" boxes (see the
+      // fillPlaceholderParent mode below) — clear the flag here too, or
+      // filling in real details this way would never actually resolve it.
+      updatePerson(formState.personId, { ...data, isPlaceholder: false });
       if (person?.spouseId && data.marriageDate !== person.marriageDate) {
         updatePerson(person.spouseId, { marriageDate: data.marriageDate });
       }
@@ -440,6 +446,18 @@ export default function App() {
     handleSelect(existingId);
     closeForm();
   }, [formState, linkExisting, handleSelect, closeForm]);
+
+  // "Link Existing" tab for filling in an "Unknown Parent" placeholder — for
+  // when the real person turns out to already be recorded elsewhere in the
+  // tree, this re-parents the whole sibling group onto them instead of typing
+  // in a duplicate. Only valid from fillPlaceholderParent/edit-a-placeholder,
+  // both of which set formState.personId to the placeholder's own id.
+  const handleMergePlaceholder = useCallback((existingId) => {
+    if (!formState) return;
+    mergePlaceholder(formState.personId, existingId);
+    handleSelect(existingId);
+    closeForm();
+  }, [formState, mergePlaceholder, handleSelect, closeForm]);
 
   const handleAddFirstPerson = useCallback(() => {
     setFormState({ mode: 'addFirst', personId: null });
@@ -1191,6 +1209,9 @@ export default function App() {
           title="Edit Person"
           initialPerson={getPerson(persons, formState.personId)}
           showMarriageDate={!!getPerson(persons, formState.personId)?.spouseId}
+          {...(getPerson(persons, formState.personId)?.isPlaceholder
+            ? { persons, personId: formState.personId, relation: 'parent', onLinkExisting: handleMergePlaceholder }
+            : {})}
           onSave={handleFormSave}
           onCancel={closeForm}
         />
@@ -1242,6 +1263,10 @@ export default function App() {
           title={formState.parentGender === 'father' ? 'Add Father' : formState.parentGender === 'mother' ? 'Add Mother' : 'Add Parent'}
           initialPerson={formState.parentGender ? { gender: formState.parentGender === 'father' ? 'male' : 'female' } : {}}
           showMarriageDate={false}
+          persons={persons}
+          personId={formState.personId}
+          relation="parent"
+          onLinkExisting={handleMergePlaceholder}
           onSave={handleFormSave}
           onCancel={closeForm}
         />
