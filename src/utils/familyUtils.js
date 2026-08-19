@@ -456,6 +456,52 @@ export function getFullName(person) {
   return `${person.firstName} ${person.lastName}`.trim();
 }
 
+// Re-derives the same surname convention App.jsx's childSurnameFor/
+// spouseDefaultFor apply ONCE at creation time — a child's surname is their
+// father's first name; a wife marrying in takes her husband's first name; a
+// husband marrying in keeps his own (unknown here, so nothing to suggest).
+// Needed because lastName is a plain stored field, never recomputed after
+// creation — if a father is added to someone RETROACTIVELY (after they or
+// their own children already exist), nothing goes back and updates those
+// surnames on its own. Returns '' when nothing can be inferred; callers
+// (see the "fill missing surnames" admin action) are responsible for only
+// applying this where the person's CURRENT last name is blank — this
+// function itself doesn't know or care whether one is already set.
+export function suggestLastName(persons, personId) {
+  const person = getPerson(persons, personId);
+  if (!person) return '';
+
+  if (person.parentIds.length > 0) {
+    for (const parentId of person.parentIds) {
+      if (getPerson(persons, parentId)?.gender === 'male') return getPerson(persons, parentId).firstName;
+    }
+    for (const parentId of person.parentIds) {
+      const parentSpouse = getPerson(persons, getPerson(persons, parentId)?.spouseId);
+      if (parentSpouse?.gender === 'male') return parentSpouse.firstName;
+    }
+    return '';
+  }
+
+  const spouse = getPerson(persons, person.spouseId);
+  if (spouse && person.gender === 'female' && spouse.gender === 'male') return spouse.firstName;
+  return '';
+}
+
+// Unlike suggestLastName (which favors a person's OWN father — correct for a blank
+// name, but not what's wanted for someone already married), this is for the "update
+// married women's surnames" admin action: a wife's last name should be her CURRENT
+// husband's first name, even though she still has her father recorded as a parent.
+// Only returns non-'' for the one case the naming convention actually redefines a
+// surname at marriage (a woman marrying a man) — a husband marrying in keeps his own
+// name, so there's nothing to suggest for him.
+export function suggestMarriedSurname(persons, personId) {
+  const person = getPerson(persons, personId);
+  if (!person || person.gender !== 'female') return '';
+  const spouse = getPerson(persons, person.spouseId);
+  if (!spouse || spouse.gender !== 'male') return '';
+  return spouse.firstName || '';
+}
+
 // Full name with the person's pet name appended in brackets, e.g. "Satish Kumar
 // Chandrasekaran (Sambu)" — used wherever a person's name is shown as their own
 // primary label (the detail panel header), not in tight spaces like tree cards or
@@ -809,6 +855,22 @@ const ENGLISH_SPOUSE_MIRROR = {
   Aunt: 'Uncle-in-law',
 };
 
+// Same-role gender counterpart for the sibling-inheritance fallback below —
+// e.g. Brother/Sister are the same role, differing only by whose own gender
+// it's describing. Deliberately covers ONLY these four plain words, same
+// restriction ENGLISH_SPOUSE_MIRROR applies above: a compound phrase like
+// "1st Cousin's Wife" describes a specific marriage, not a category, so
+// copying it onto a DIFFERENT person (personId's own sibling) fabricates a
+// claim about them rather than describing their real relationship — English
+// has no word for "cousin-in-law's sibling", so that case now returns null
+// (the Tamil term still shows on its own) instead of a wrong phrase.
+const ENGLISH_SIBLING_GENDER_PAIRS = {
+  Brother: { male: 'Brother', female: 'Sister' },
+  Sister: { male: 'Brother', female: 'Sister' },
+  Uncle: { male: 'Uncle', female: 'Aunt' },
+  Aunt: { male: 'Uncle', female: 'Aunt' },
+};
+
 // English counterpart to resolveTamilTermChained — same reasoning: each
 // fallback recurses into the others (via cycle-protected `visiting`) so a
 // chain of any length resolves correctly, not just one hop of composability.
@@ -834,12 +896,14 @@ function resolveEnglishTermChained(persons, personId, rootId, visiting) {
       if (mapped) return mapped;
     }
 
-    // Sibling inheritance — copying a sibling's own clean term as-is (not a
-    // manufactured nested phrase) is exactly the "equivalent to a direct
-    // relationship" style this file's English labels stick to.
+    // Sibling inheritance — re-picks the inherited relation's gender-correct
+    // word for personId's OWN gender (see ENGLISH_SIBLING_GENDER_PAIRS),
+    // rather than copying a sibling's own clean term as-is regardless of
+    // whether it's still gender-correct for the person inheriting it.
     for (const sibling of getSiblings(persons, person)) {
       const siblingTerm = resolveEnglishTermChained(persons, sibling.id, rootId, visiting);
-      if (siblingTerm) return siblingTerm;
+      const pair = siblingTerm && ENGLISH_SIBLING_GENDER_PAIRS[siblingTerm];
+      if (pair) return person.gender === 'male' ? pair.male : person.gender === 'female' ? pair.female : siblingTerm;
     }
 
     // Parent-category inheritance — a plain, direct-style word for each
@@ -1190,12 +1254,20 @@ function tamilAgeOrder(persons, idA, idB) {
 // wife, Anna/Thambi for a female cross-cousin's husband — decided by comparing
 // DOB directly against root. Shows both options when DOB is missing on either
 // side rather than guessing.
-function tamilCrossCousinSpouseTerm(persons, personId, rootId, cousinGender) {
+// Requires BOTH cousinGender and the spouse's own personGender to agree with
+// the expected opposite-gender pairing, mirroring tamilSiblingSpouseTermFromOrder
+// just above — checking personGender directly (not just inferring "the spouse
+// must be the opposite of the cousin") means a data-entry mistake on either
+// person's Gender field surfaces as a missing term instead of a confidently
+// wrong one (e.g. a male cross-cousin's spouse whose OWN gender is also
+// recorded male — a real bug seen in production — now returns null here
+// rather than showing தங்கை/Akka for someone who isn't actually female).
+function tamilCrossCousinSpouseTerm(persons, personId, rootId, cousinGender, personGender) {
   const order = tamilAgeOrder(persons, personId, rootId);
-  if (cousinGender === 'male') {
+  if (cousinGender === 'male' && personGender === 'female') {
     return order === 'elder' ? 'அக்கா' : order === 'younger' ? 'தங்கை' : 'அக்கா/தங்கை';
   }
-  if (cousinGender === 'female') {
+  if (cousinGender === 'female' && personGender === 'male') {
     return order === 'elder' ? 'அண்ணன்' : order === 'younger' ? 'தம்பி' : 'அண்ணன்/தம்பி';
   }
   return null;
@@ -1282,7 +1354,7 @@ function tamilInLawLabel(persons, personId, rootId, male, female) {
             const order = tamilBirthOrder(persons, ancestorId, cousinParent, rootParent);
             term = tamilSiblingSpouseTermFromOrder(spouse.gender, order, personGender);
           } else {
-            term = tamilCrossCousinSpouseTerm(persons, personId, rootId, spouse.gender);
+            term = tamilCrossCousinSpouseTerm(persons, personId, rootId, spouse.gender, personGender);
           }
         }
       } else if (distSP === 2 && distRoot === 3) {
@@ -1521,6 +1593,33 @@ const KNOWN_FAMILY_WORDS = new Set([
   'மைத்துனி/மச்சினிச்சி',
 ]);
 
+// Same-role gender counterpart for every word in KNOWN_FAMILY_WORDS — e.g.
+// அண்ணன்/அக்கா are both "elder sibling", differing only by the SPEAKER's own
+// gender, not by anything about the sibling being inherited from. Needed
+// because fallback #2 below used to return a sibling's own term verbatim: a
+// woman married to a cross-cousin correctly gets தங்கை (younger sister,
+// matches her own gender), but her BROTHER — who has no direct relation of
+// his own and only reaches this fallback via her — was inheriting that same
+// female-only word unchanged, showing தங்கை for a man (a real, reported bug).
+// Now the inherited term's ROLE/CATEGORY carries over, but the actual word is
+// re-picked for personId's own gender, the same way fallback #3 just below
+// already does for parent-category inheritance.
+const SIBLING_TERM_GENDER_PAIRS = {
+  'அண்ணன்': { male: 'அண்ணன்', female: 'அக்கா' },
+  'அக்கா': { male: 'அண்ணன்', female: 'அக்கா' },
+  'தம்பி': { male: 'தம்பி', female: 'தங்கை' },
+  'தங்கை': { male: 'தம்பி', female: 'தங்கை' },
+  'மாமா': { male: 'மாமா', female: 'அத்தை' },
+  'அத்தை': { male: 'மாமா', female: 'அத்தை' },
+  'தாய் மாமா': { male: 'தாய் மாமா', female: 'அத்தை' },
+  'பெரியப்பா': { male: 'பெரியப்பா', female: 'பெரியம்மா' },
+  'பெரியம்மா': { male: 'பெரியப்பா', female: 'பெரியம்மா' },
+  'சித்தப்பா': { male: 'சித்தப்பா', female: 'சித்தி/சின்னம்மா' },
+  'சித்தி/சின்னம்மா': { male: 'சித்தப்பா', female: 'சித்தி/சின்னம்மா' },
+  'மைத்துனன்/மச்சான்': { male: 'மைத்துனன்/மச்சான்', female: 'மைத்துனி/மச்சினிச்சி' },
+  'மைத்துனி/மச்சினிச்சி': { male: 'மைத்துனன்/மச்சான்', female: 'மைத்துனி/மச்சினிச்சி' },
+};
+
 // Used by getRelationshipLabelTamil's fallback #3 (a parent with no blood
 // path of their own either) to decide whether THEIR child is a cross-cousin
 // or sibling-treated, purely from which word-family the parent's own term
@@ -1581,7 +1680,7 @@ function resolveTamilTermChained(persons, personId, rootId, overrides, visiting)
       // DOB-based rule instead of a fixed word mapping.
       const spouse = getPerson(persons, person.spouseId);
       if (spouseTerm === 'மைத்துனன்/மச்சான்' || spouseTerm === 'மைத்துனி/மச்சினிச்சி') {
-        const crossTerm = tamilCrossCousinSpouseTerm(persons, personId, rootId, spouse?.gender);
+        const crossTerm = tamilCrossCousinSpouseTerm(persons, personId, rootId, spouse?.gender, person.gender);
         if (crossTerm) return crossTerm;
       }
       const mapped = SPOUSE_MIRROR_MAP[spouseTerm];
@@ -1595,7 +1694,9 @@ function resolveTamilTermChained(persons, personId, rootId, overrides, visiting)
     // Periyappa/Chithappa).
     for (const sibling of getSiblings(persons, person)) {
       const siblingTerm = resolveTamilTermChained(persons, sibling.id, rootId, overrides, visiting);
-      if (siblingTerm && KNOWN_FAMILY_WORDS.has(siblingTerm)) return siblingTerm;
+      if (!siblingTerm || !KNOWN_FAMILY_WORDS.has(siblingTerm)) continue;
+      const pair = SIBLING_TERM_GENDER_PAIRS[siblingTerm];
+      return person.gender === 'male' ? pair.male : person.gender === 'female' ? pair.female : siblingTerm;
     }
 
     // Fallback #3: personId's own PARENT is a Mama/Athai/Periyappa/

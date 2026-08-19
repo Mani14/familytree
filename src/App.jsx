@@ -20,6 +20,7 @@ import ImportExport from './components/ImportExport';
 import ThemeToggle from './components/ThemeToggle';
 import StatsPanel from './components/StatsPanel';
 import DataHealthPanel from './components/DataHealthPanel';
+import UpdateMarriedSurnamesPanel from './components/UpdateMarriedSurnamesPanel';
 import AskPanel from './components/AskPanel';
 import AdminPanel from './components/AdminPanel';
 import MobileMenu from './components/MobileMenu';
@@ -34,6 +35,7 @@ import {
   getRelationshipPath,
   getRelationshipLabel,
   getRelationshipLabelTamil,
+  suggestLastName,
 } from './utils/familyUtils';
 import './styles/App.css';
 
@@ -68,6 +70,7 @@ export default function App() {
     saveState,
     addPerson,
     updatePerson,
+    bulkUpdatePersons,
     deletePerson,
     addChild,
     addSpouse,
@@ -104,6 +107,7 @@ export default function App() {
   const [locatedId, setLocatedId] = useState(null); // person shown with the green "located" ring (search / Locate Me)
   const [showStatsPanel, setShowStatsPanel] = useState(false);
   const [showDataHealth, setShowDataHealth] = useState(false);
+  const [showMarriedSurnames, setShowMarriedSurnames] = useState(false);
   const [showFeatureShowcase, setShowFeatureShowcase] = useState(false);
   const [showFamilyMap, setShowFamilyMap] = useState(false);
   const [showAdminPanel, setShowAdminPanel] = useState(false);
@@ -538,6 +542,23 @@ export default function App() {
       },
     });
   }, [resetToSeed]);
+
+  // Fills in ONLY currently-blank last names, using the same convention new people get
+  // by default (see childSurnameFor/spouseDefaultFor above) — never overwrites a last
+  // name someone already typed in, so it's safe to re-run any time after adding a
+  // parent or spouse retroactively (lastName is otherwise a static, creation-time-only
+  // default and never recomputed on its own).
+  const handleFillMissingSurnames = useCallback(() => {
+    const updatesById = {};
+    for (const id of Object.keys(persons)) {
+      if (persons[id].lastName?.trim()) continue;
+      const suggestion = suggestLastName(persons, id);
+      if (suggestion) updatesById[id] = { lastName: suggestion };
+    }
+    const count = Object.keys(updatesById).length;
+    if (count > 0) bulkUpdatePersons(updatesById);
+    return count;
+  }, [persons, bulkUpdatePersons]);
 
   // Uncollapses every ancestor of a person so a search jump always lands on a visible node.
   const revealAncestors = useCallback((id) => {
@@ -1184,6 +1205,13 @@ export default function App() {
         updatePerson={updatePerson}
       />
 
+      <UpdateMarriedSurnamesPanel
+        persons={persons}
+        isOpen={showMarriedSurnames && isAdmin}
+        onClose={() => setShowMarriedSurnames(false)}
+        onApply={bulkUpdatePersons}
+      />
+
       <RelationshipRulesPanel
         overrides={relationshipOverrides}
         isOpen={showRelationshipRules}
@@ -1215,6 +1243,8 @@ export default function App() {
           updateSettings={updateAppSettings}
           onRequestReset={handleRequestReset}
           onOpenDataHealth={() => setShowDataHealth(true)}
+          onFillMissingSurnames={handleFillMissingSurnames}
+          onOpenMarriedSurnames={() => setShowMarriedSurnames(true)}
         />
       )}
 

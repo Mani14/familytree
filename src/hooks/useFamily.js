@@ -156,6 +156,21 @@ export function useFamily() {
     });
   }, [pushHistory]);
 
+  // Applies many people's updates as ONE undo step — e.g. "fill in every
+  // missing surname across the tree" touching a dozen people at once should
+  // undo in one press, not require pressing Undo a dozen times because each
+  // person went through its own separate updatePerson/pushHistory call.
+  const bulkUpdatePersons = useCallback((updatesById) => {
+    pushHistory();
+    setPersons((prev) => {
+      const next = { ...prev };
+      for (const [id, updates] of Object.entries(updatesById)) {
+        if (next[id]) next[id] = { ...next[id], ...updates };
+      }
+      return next;
+    });
+  }, [pushHistory]);
+
   // Removes a person and scrubs every reference to them.
   const deletePerson = useCallback((id) => {
     pushHistory();
@@ -542,6 +557,7 @@ export function useFamily() {
     saveState,
     addPerson,
     updatePerson,
+    bulkUpdatePersons,
     deletePerson,
     addChild,
     addSpouse,

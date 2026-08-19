@@ -189,6 +189,31 @@ export function runDataHealthCheck(persons) {
     }
   }
 
+  // Same-gender spouse pairs — usually a Gender field typo on one side rather than
+  // an intentional same-sex marriage, and it silently breaks the Tamil in-law terms
+  // that assume an opposite-gender spouse (e.g. tamilCrossCousinSpouseTerm) — those
+  // now return no term at all rather than a confidently wrong one once genders
+  // don't match, which is what actually surfaces this as a badge going blank. Info
+  // severity, no auto-fix, since only a human knows which person's Gender is wrong.
+  const seenGenderPairs = new Set();
+  for (const id of ids) {
+    const person = persons[id];
+    if (person.spouseId && persons[person.spouseId] && person.gender && person.gender === persons[person.spouseId].gender) {
+      const pairKey = [id, person.spouseId].sort().join('|');
+      if (!seenGenderPairs.has(pairKey)) {
+        seenGenderPairs.add(pairKey);
+        issues.push({
+          id: `same-gender-spouses-${pairKey}`,
+          severity: 'info',
+          category: 'Same-gender spouses',
+          message: `${name(persons, id)} and ${name(persons, person.spouseId)} are recorded as spouses with the same gender (${person.gender}) — double-check both people's Gender field if that's not intentional.`,
+          personIds: [id, person.spouseId],
+          fix: null,
+        });
+      }
+    }
+  }
+
   // Informational only — not broken, just unfinished (see useFamily's addSibling).
   for (const id of ids) {
     const person = persons[id];

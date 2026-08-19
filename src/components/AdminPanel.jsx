@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
-import { ShieldAlert, ShieldCheck, Trash2, UserPlus } from 'lucide-react';
+import { ShieldAlert, ShieldCheck, Trash2, UserCheck, UserPlus, Wand2 } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { getFullName, getPerson } from '../utils/familyUtils';
 import Modal from './Modal';
@@ -22,10 +22,18 @@ export default function AdminPanel({
   updateSettings,
   onRequestReset,
   onOpenDataHealth,
+  onFillMissingSurnames,
+  onOpenMarriedSurnames,
 }) {
   const [newAdminEmail, setNewAdminEmail] = useState('');
   const [userLinks, setUserLinks] = useState(null); // null = not loaded yet
   const [settingsError, setSettingsError] = useState(null);
+  const [fillResult, setFillResult] = useState(null);
+
+  const handleFillMissingSurnames = () => {
+    const count = onFillMissingSurnames();
+    setFillResult(count > 0 ? `Filled ${count} missing surname${count === 1 ? '' : 's'}.` : 'No missing surnames could be inferred.');
+  };
 
   // Surfaces write failures (e.g. permission-denied if firestore.rules hasn't been
   // deployed yet) instead of the checkbox silently reverting with no explanation.
@@ -186,6 +194,24 @@ export default function AdminPanel({
         <p className="admin-muted">Scan for broken or inconsistent relationships — dangling references, asymmetric links, unfilled placeholders.</p>
         <button type="button" className="admin-secondary-btn" onClick={onOpenDataHealth}>
           <ShieldCheck size={14} /> Open Data Health Check
+        </button>
+        <p className="admin-muted">
+          Fill in any last name left blank, using the same convention new people get by
+          default (child → father's first name; a wife marrying in → her husband's first
+          name) — only ever fills a blank, never overwrites a name someone already typed
+          in, so it's safe to re-run any time after adding a parent or spouse retroactively.
+        </p>
+        <button type="button" className="admin-secondary-btn" onClick={handleFillMissingSurnames}>
+          <Wand2 size={14} /> Fill Missing Surnames
+        </button>
+        {fillResult && <p className="admin-muted">{fillResult}</p>}
+        <p className="admin-muted">
+          Married later and still has her father's/maiden last name on record?
+          Review a list of married women whose last name doesn't match their
+          husband's first name, and choose which ones to update.
+        </p>
+        <button type="button" className="admin-secondary-btn" onClick={onOpenMarriedSurnames}>
+          <UserCheck size={14} /> Update Married Surnames
         </button>
       </section>
 

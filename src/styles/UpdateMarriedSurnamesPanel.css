@@ -1,0 +1,96 @@
+.married-surnames-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.married-surnames-panel h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 18px;
+}
+
+.married-surnames-summary {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.married-surnames-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 28px 10px;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.married-surnames-empty svg {
+  color: #22c55e;
+}
+
+.married-surnames-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.married-surnames-item {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+}
+
+.married-surnames-item label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.married-surnames-item input[type='checkbox'] {
+  margin-top: 3px;
+}
+
+.married-surnames-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.married-surnames-name {
+  font-size: 13px;
+  color: var(--color-text);
+}
+
+.married-surnames-muted {
+  color: var(--color-text-muted);
+  font-weight: 400;
+}
+
+.married-surnames-change {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+.married-surnames-arrow {
+  color: var(--color-text-muted);
+  font-weight: 400;
+}
+
+@media (max-width: 480px) {
+  .married-surnames-list {
+    max-height: 60vh;
+  }
+}
