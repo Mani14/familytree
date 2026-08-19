@@ -123,6 +123,26 @@ classify locally + via the Worker, resolve the answer with real code.
   spouse's gender from their cross-cousin's gender instead of checking the
   spouse's own recorded gender — always prefer the actual person's own
   `gender` field over inferring it from someone else's.
+- **Transactional-email free tiers vary wildly in whether they need a verified
+  domain — always test a real send to a SECOND address before trusting a
+  provider's marketing copy.** Resend was tried first specifically because it
+  claims its shared sandbox sender needs no domain setup — true for sending
+  to yourself, but it hard-rejects (`403 validation_error`) every OTHER
+  recipient until a domain is verified, discovered only by an actual test
+  send, not by reading their docs. Switched to **Brevo** instead
+  (`worker/src/email.js`), which supports verifying a single sender EMAIL
+  (no domain) via **Senders, Domains & Dedicated IPs → Senders → Add Sender**
+  in its dashboard, and — confirmed by testing, not assumed — actually
+  delivers to arbitrary recipients from that single verified address. Brevo
+  does warn that a plain Gmail/freemail sender lacks the DKIM/DMARC alignment
+  Google/Yahoo/Microsoft now recommend (may affect spam-folder placement),
+  but this is advisory, not a hard block like Resend's. If deliverability
+  becomes a real problem later, the fix is a verified custom domain — the
+  user doesn't currently own one, so this was deliberately deferred.
+  Free-tier scale: Brevo is 300 emails/day, permanent (unlike SendGrid, whose
+  once-permanent free tier is now a 60-day trial only — checked live during
+  this decision, not from memory, since exactly this kind of policy changes
+  over time).
 - **A Grep-tool display quirk**: search results have occasionally rendered
   `//` (a real comment marker in the file) as a stray `\` in this
   environment. If a Grep result shows something like `\ Fallback #3:` where

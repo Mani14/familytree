@@ -90,7 +90,17 @@ export default function App() {
     canUndo,
     canRedo,
   } = useFamily();
-  const { user, authReady, signIn, signOut, meId, meReady, myRootId, setMe, setMyRoot } = useAuth();
+  const {
+    user,
+    authReady,
+    signIn,
+    signOut,
+    meId,
+    meReady,
+    myRootId,
+    setMe,
+    setMyRoot,
+  } = useAuth();
   const { isAdmin, adminEmails, permanentAdminEmails, addAdmin, removeAdmin } = useAdmin(user);
   const { settings: appSettings, updateSettings: updateAppSettings } = useAppSettings();
   const { overrides: relationshipOverrides, addOverride: addRelationshipOverride, removeOverride: removeRelationshipOverride } = useRelationshipOverrides();
@@ -1080,6 +1090,8 @@ export default function App() {
               isHighlighted={highlightedIds.has(selected.id)}
               meId={meId}
               onSetMe={requestSetMe}
+              user={user}
+              isAdmin={isAdmin}
               showAges={appSettings.features.showAges}
               onClose={closeDetail}
               onNavigate={handleSelect}

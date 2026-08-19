@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion, Reorder, useDragControls } from 'framer-motion';
-import { BadgeCheck, Baby, Briefcase, Cake, ChevronDown, ChevronUp, Eye, GitBranch, GripVertical, HeartHandshake, Mail, MapPin, Pencil, Phone, Route, Sparkles, Trash2, UserPlus, Users, X, XCircle } from 'lucide-react';
+import { BadgeCheck, Baby, Briefcase, Cake, ChevronDown, ChevronUp, Eye, Gift, GitBranch, GripVertical, HeartHandshake, Mail, MapPin, Pencil, Phone, Route, Sparkles, Trash2, UserPlus, Users, X, XCircle } from 'lucide-react';
 import {
   formatBirthdayNoYear,
   formatDateDisplay,
@@ -17,6 +17,7 @@ import {
   getSiblings,
   getSpouse,
 } from '../utils/familyUtils';
+import { useBirthdayWishes } from '../hooks/useBirthdayWishes';
 import '../styles/PersonDetail.css';
 
 // One draggable row — a dedicated grip handle starts the drag (via Framer's
@@ -176,6 +177,8 @@ export default function PersonDetail({
   isHighlighted,
   meId,
   onSetMe,
+  user,
+  isAdmin,
   showAges = true,
   onClose,
   onNavigate,
@@ -197,6 +200,13 @@ export default function PersonDetail({
   overrides = [],
   onEditRelationship,
 }) {
+  // Called unconditionally, before the `!person` early return below — person
+  // can transiently be undefined while this panel is still mid-exit-animation
+  // (AnimatePresence keeps it mounted briefly after `selected` clears), and a
+  // hook called only on SOME renders breaks React's hook-order rule.
+  const { wishes, addWish, removeWish } = useBirthdayWishes(person?.id, user);
+  const [wishText, setWishText] = useState('');
+
   if (!person) return null;
 
   const spouse = getSpouse(persons, person);
@@ -222,6 +232,13 @@ export default function PersonDetail({
   const stats = getFamilyStats(persons, person);
   const hasStats = stats && (stats.childrenCount > 0 || stats.grandchildrenCount > 0 || stats.siblingsCount > 0);
   const isMe = !!meId && meId === person.id;
+
+  const handleSendWish = (e) => {
+    e.preventDefault();
+    if (!wishText.trim()) return;
+    addWish(wishText);
+    setWishText('');
+  };
 
   return (
     <motion.aside
@@ -346,6 +363,46 @@ export default function PersonDetail({
           <p>{person.notes}</p>
         </div>
       )}
+
+      <div className="detail-wishes">
+        <span className="detail-relation-title detail-wishes-title"><Gift size={13} /> Birthday Wishes</span>
+        {wishes.length > 0 && (
+          <ul className="detail-wishes-list">
+            {wishes.map((wish) => (
+              <li key={wish.id}>
+                <div className="detail-wish-body">
+                  <span className="detail-wish-from">{wish.fromName}</span>
+                  <p className="detail-wish-message">{wish.message}</p>
+                </div>
+                {user && (wish.fromUid === user.uid || isAdmin) && (
+                  <button
+                    type="button"
+                    className="detail-wish-remove"
+                    title="Remove this wish"
+                    aria-label="Remove this wish"
+                    onClick={() => removeWish(wish.id)}
+                  >
+                    ×
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        {user ? (
+          <form className="detail-wish-form" onSubmit={handleSendWish}>
+            <textarea
+              value={wishText}
+              onChange={(e) => setWishText(e.target.value)}
+              placeholder={`Leave a birthday wish for ${person.firstName}…`}
+              rows={2}
+            />
+            <button type="submit" disabled={!wishText.trim()}>Send Wish</button>
+          </form>
+        ) : (
+          wishes.length === 0 && <p className="detail-muted">No wishes yet.</p>
+        )}
+      </div>
 
       <div className="detail-relations">
         <RelationList

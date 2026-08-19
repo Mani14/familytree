@@ -3,12 +3,17 @@ rules_version = '2';
 // families/main: the one shared tree doc — any signed-in relative can read/write it.
 // families/relationshipOverrides: custom Tamil relationship-term rules, same
 //   any-signed-in-relative access as families/main.
-// users/{uid}: personal prefs (meId, rootId) — only that account can touch its own
-//   doc, EXCEPT admins, who can also read/write everyone's (see AdminPanel's
-//   "Linked Accounts" view and account-fixing needs).
+// users/{uid}: personal prefs (meId, rootId, cached login email, notification
+//   opt-in) — only that account can touch its own doc, EXCEPT admins, who can
+//   also read/write everyone's (see AdminPanel's "Linked Accounts" view and
+//   account-fixing needs).
 // settings/admins, settings/app: admin-managed config — any signed-in user can read
 //   (so the client can check its own admin status / apply feature flags), but only
 //   an existing admin can write. Mirrors src/hooks/useAdmin.js's PERMANENT_ADMIN_EMAILS.
+// birthdayWishes/{wishId}: one doc per wish left on a person's profile — anyone
+//   signed in can read/leave one, but only the author (or an admin) can delete
+//   it, and nobody can edit one after posting (matches how a birthday wish
+//   works in real life — you can take it back, not rewrite it later).
 // Everything else is denied by default.
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -37,6 +42,13 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow read, write: if request.auth != null && (request.auth.uid == userId || isAdmin());
+    }
+
+    match /birthdayWishes/{wishId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.resource.data.fromUid == request.auth.uid;
+      allow delete: if request.auth != null && (resource.data.fromUid == request.auth.uid || isAdmin());
+      allow update: if false;
     }
 
     match /settings/admins {

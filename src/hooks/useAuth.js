@@ -45,6 +45,16 @@ export function useAuth() {
     });
   }, [user?.uid]);
 
+  // Caches this account's own login email onto its users/<uid> doc — the
+  // birthday-notification Worker cron reads Firestore only (it can't reach
+  // Firebase Auth directly), so this is the one place that email needs to
+  // live for the cron job to know where to send a "someone's birthday today"
+  // email. Runs once per sign-in; harmless to re-run if the address changes.
+  useEffect(() => {
+    if (!user?.uid || !user.email) return;
+    setDoc(doc(db, 'users', user.uid), { email: user.email }, { merge: true }).catch(() => {});
+  }, [user?.uid, user?.email]);
+
   const signIn = useCallback(() => {
     googleProvider.setCustomParameters({ prompt: 'select_account' });
     return signInWithPopup(auth, googleProvider).catch(() => {});
@@ -70,5 +80,15 @@ export function useAuth() {
     [user?.uid]
   );
 
-  return { user, authReady, signIn, signOut, meId, meReady, myRootId, setMe, setMyRoot };
+  return {
+    user,
+    authReady,
+    signIn,
+    signOut,
+    meId,
+    meReady,
+    myRootId,
+    setMe,
+    setMyRoot,
+  };
 }

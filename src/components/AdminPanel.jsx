@@ -156,13 +156,32 @@ export default function AdminPanel({
           />
         </label>
         <label className="admin-row">
-          <span>Show ages (hides age & birth year, keeps birthday)</span>
+          <span>Show ages & birth years</span>
           <input
             type="checkbox"
             checked={settings.features.showAges}
             onChange={(e) => handleUpdateSettings({ features: { ...settings.features, showAges: e.target.checked } })}
           />
         </label>
+        <p className="admin-muted">
+          When off, only the birthday itself (month & day) is shown for
+          everyone — age and birth year are hidden app-wide.
+        </p>
+        <label className="admin-row">
+          <span>Send "X's birthday today" alert emails to opted-in family members</span>
+          <input
+            type="checkbox"
+            checked={settings.features.birthdayAlertEmails}
+            onChange={(e) => handleUpdateSettings({ features: { ...settings.features, birthdayAlertEmails: e.target.checked } })}
+          />
+        </label>
+        <p className="admin-muted">
+          Master switch for the daily birthday-alert email job — off by
+          default. Individual accounts can still opt themselves in via
+          Notification Preferences, but nothing actually goes out to anyone
+          else until this is turned on. The "Happy Birthday" email to the
+          birthday person themselves is unaffected by this toggle.
+        </p>
       </section>
 
       <section className="admin-section">

@@ -14,3 +14,6 @@ dist-ssr
 .firebase
 firebase-debug.log
 firebase-debug.*.log
+
+# Wrangler local dev/deploy cache — never anything secret, but noisy
+worker/.wrangler

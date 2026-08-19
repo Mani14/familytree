@@ -1,5 +1,9 @@
 import { importX509, jwtVerify, decodeProtectedHeader } from 'jose';
+import { getDocument, listDocuments } from './firestore.js';
+import { sendEmail } from './email.js';
+import { birthdayPersonEmail, birthdayNotifyEmail } from './emailTemplates.js';
 
+const APP_URL = 'https://family-tree-3b760.web.app';
 const FIREBASE_PROJECT_ID = 'family-tree-3b760';
 const FIREBASE_CERTS_URL = 'https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com';
 // Groq's available model lineup changes over time — llama-3.1-8b-instant
@@ -92,6 +96,65 @@ function json(body, status, origin) {
     status,
     headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
   });
+}
+
+// Mirrors getDaysUntilBirthday's "is it today" case from src/utils/familyUtils.js
+// — reimplemented standalone rather than imported, since the Worker can't
+// pull in that file (it's part of the Vite/React build, not this one) for
+// what's a 2-line date comparison. Pure string comparison in UTC (both `dob`
+// and "today" as 'MM-DD' slices) sidesteps timezone entirely — Workers run in
+// UTC and the cron itself fires on a fixed UTC schedule, so there's no local-
+// timezone conversion to get wrong here.
+function isBirthdayToday(dob) {
+  if (!dob || dob.length < 10) return false; // guards year-only dates (dod supports those; dob shouldn't have any today, but don't crash if one ever does)
+  const todayMonthDay = new Date().toISOString().slice(5, 10);
+  return dob.slice(5, 10) === todayMonthDay;
+}
+
+// Runs once daily via the Cron Trigger in wrangler.toml. Reads Firestore
+// directly with a narrowly-scoped (read-only) service-account credential —
+// see firestore.js's comment for why that's safe and how it's enforced.
+async function runBirthdayJob(env) {
+  const familyDoc = await getDocument(env, 'families/main');
+  const persons = familyDoc?.persons || {};
+  const users = await listDocuments(env, 'users');
+  // Every signed-in account with a cached login email gets the broadcast —
+  // there's no per-account opt-in. The ONLY control is the admin master
+  // switch below, so this reaches every family member who's used the app,
+  // not just whoever happened to find and enable a personal toggle.
+  const recipients = users.filter((u) => u.email);
+
+  const birthdayPeople = Object.values(persons).filter((p) => p.isAlive && isBirthdayToday(p.dob));
+  if (!birthdayPeople.length) return; // nothing to send today — the common case
+
+  for (const person of birthdayPeople) {
+    if (!person.verifiedEmail) continue; // only a linked, self-managed account — never the freeform contact `email` field
+    try {
+      const { subject, html } = birthdayPersonEmail({ firstName: person.firstName, appUrl: APP_URL });
+      await sendEmail(env, { to: person.verifiedEmail, subject, html });
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  // Admin-controlled master switch (Admin Settings > App-Wide Settings) —
+  // off by default. Doesn't affect the personal "Happy Birthday" email
+  // above, which only ever depends on that one person's own account being
+  // linked (verifiedEmail).
+  const appSettings = await getDocument(env, 'settings/app');
+  if (!appSettings?.features?.birthdayAlertEmails) return;
+
+  for (const user of recipients) {
+    for (const person of birthdayPeople) {
+      if (user.email === person.verifiedEmail) continue; // don't tell someone it's their own birthday — they already got the personal email above
+      try {
+        const { subject, html } = birthdayNotifyEmail({ firstName: person.firstName, lastName: person.lastName, appUrl: APP_URL });
+        await sendEmail(env, { to: user.email, subject, html });
+      } catch (err) {
+        console.error(err);
+      }
+    }
+  }
 }
 
 export default {
@@ -189,5 +252,18 @@ export default {
       return json({ type: 'birthday-next' }, 200, origin);
     }
     return json({ type: 'unknown' }, 200, origin);
+  },
+
+  async scheduled(controller, env, ctx) {
+    // The service account is read-only by design (see firestore.js), so
+    // there's no Firestore write available to mark "already sent today" for
+    // idempotency. Rather than let a mid-job failure trigger Cloudflare's
+    // automatic scheduled() retry (which risks double-sending the emails
+    // that already went out before the failure), this opts out of retry
+    // entirely — a transient failure means no email that day, logged via
+    // `wrangler tail` for manual follow-up, which is the safer failure mode
+    // for a nice-to-have feature like this.
+    controller.noRetry();
+    await runBirthdayJob(env);
   },
 };
