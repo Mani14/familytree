@@ -327,13 +327,18 @@
    on a small phone screen. */
 .person-form-actions {
   position: sticky;
-  bottom: 0;
+  bottom: calc(-1 * var(--space-5));
   z-index: 1;
   display: flex;
-  justify-content: flex-end;
+  justify-content: center;
   gap: 10px;
-  margin: 4px 0 0;
-  padding-top: 14px;
+  /* Bleed to the modal's padded edges so the bar reads as the modal's own
+     footer (like PersonDetail's .detail-actions), not a detached box. No own
+     border-radius — the modal-surface's overflow clips the rounded corners, so
+     the bar fills the full bottom rectangle without leaving a rounded sliver of
+     modal background peeking through at the corners. */
+  margin: 4px calc(-1 * var(--space-5)) calc(-1 * var(--space-5));
+  padding: 14px var(--space-5) var(--space-5);
   border-top: 1px solid var(--color-border);
   background: var(--glass-bg);
   backdrop-filter: blur(var(--glass-blur));
@@ -473,7 +478,7 @@
 
   .person-form-actions {
     justify-content: stretch;
-    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-bottom: calc(var(--space-5) + env(safe-area-inset-bottom, 0px));
   }
 
   .person-form-actions button {

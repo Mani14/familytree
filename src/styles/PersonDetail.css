@@ -442,8 +442,11 @@
   position: sticky;
   bottom: calc(-1 * var(--space-5));
   z-index: 1;
-  display: flex;
-  flex-wrap: wrap;
+  /* Two equal columns so buttons stretch to fill the width instead of leaving
+     the rest of a row empty when a wide label (e.g. "View as this person")
+     wraps onto its own line. */
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 8px;
   margin: 0 calc(-1 * var(--space-5)) calc(-1 * var(--space-5));
   padding: 12px var(--space-5) var(--space-5);
@@ -455,6 +458,7 @@
 .detail-actions button {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   padding: 8px 14px;
   font-size: 13px;
@@ -480,7 +484,7 @@
 }
 
 .detail-delete {
-  margin-left: auto;
+  grid-column: 1 / -1;
   border-color: #dc2626 !important;
   color: #dc2626 !important;
 }

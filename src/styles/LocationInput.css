@@ -8,6 +8,14 @@
   position: relative;
 }
 
+/* Fill the available width — the field often holds long place names
+   ("Thiruthuraipoondi, Thiruvarur, …") that were otherwise truncated in a
+   narrower default-width box despite the room to the right. */
+.location-input-search input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
 .location-input-results {
   position: absolute;
   top: calc(100% + 4px);
@@ -85,6 +93,13 @@
 .location-input-actions button:disabled {
   opacity: 0.6;
   cursor: default;
+}
+
+@media (hover: hover) {
+  .location-input-clear:not(:disabled):hover {
+    border-color: #dc2626;
+    color: #dc2626;
+  }
 }
 
 .location-input-warning {

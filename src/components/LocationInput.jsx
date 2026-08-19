@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { LocateFixed } from 'lucide-react';
+import { LocateFixed, X } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { reverseGeocode, searchPlaces } from '../utils/mapTiles';
 import '../styles/LocationInput.css';
@@ -202,6 +202,22 @@ export default function LocationInput({ value, lat, lng, approximate, onChange }
     timeoutId = setTimeout(finish, GPS_MAX_WAIT_MS);
   };
 
+  // Wipes the location entirely — text AND the pinned coordinates/approximate
+  // flag — so a person recorded with a wrong or no-longer-wanted place can be
+  // reset to blank, not just have the text edited (which alone would leave a
+  // stale pin behind via hasCoords).
+  const clearLocation = () => {
+    clearTimeout(debounceRef.current);
+    setQuery('');
+    setResults([]);
+    setIsOpen(false);
+    setAccuracy(null);
+    setImprecise(false);
+    setError('');
+    setBlocked(false);
+    onChange({ location: '', locationLat: null, locationLng: null, locationApproximate: false });
+  };
+
   const hasCoords = lat != null && lng != null;
 
   return (
@@ -242,6 +258,11 @@ export default function LocationInput({ value, lat, lng, approximate, onChange }
         <button type="button" onClick={useCurrentLocation} disabled={loading}>
           <LocateFixed size={13} /> Use My Current Location
         </button>
+        {(query.trim() || hasCoords) && (
+          <button type="button" className="location-input-clear" onClick={clearLocation} disabled={loading}>
+            <X size={13} /> Clear
+          </button>
+        )}
       </div>
 
       {gpsWaiting && <p className="location-input-hint">Getting an accurate GPS fix… (up to {GPS_MAX_WAIT_MS / 1000}s)</p>}

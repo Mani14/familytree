@@ -607,18 +607,6 @@ export default function App() {
     setLocateRequest((prev) => ({ id, nonce: prev.nonce + 1 }));
   }, [revealAncestors]);
 
-  // One-time deep link: if the app was opened with ?person=<id> (a link shared
-  // from PersonDetail's "Copy Link"), open that person's card once the tree has
-  // finished loading. Guarded by a ref so it fires exactly once and never fights
-  // the user's own later navigation.
-  const deepLinkHandledRef = useRef(false);
-  useEffect(() => {
-    if (loading || deepLinkHandledRef.current) return;
-    deepLinkHandledRef.current = true;
-    const id = new URLSearchParams(window.location.search).get('person');
-    if (id && persons[id]) handleViewPersonDetails(id);
-  }, [loading, persons, handleViewPersonDetails]);
-
   // "Find Connection" travel animation — hops the located/centred person down the
   // path node-by-node instead of jumping straight to the end, so the camera visibly
   // walks the chain. Reuses handleLocatePerson (reveal + centre + green ring) as the
@@ -1295,6 +1283,10 @@ export default function App() {
             onFillMissingSurnames={handleFillMissingSurnames}
             onOpenMarriedSurnames={() => setShowMarriedSurnames(true)}
             onOpenRecentActivity={() => setShowRecentActivity(true)}
+            exportData={exportData}
+            onImport={handleImport}
+            onExportImage={handleExportImage}
+            onExportPDF={handleExportPDF}
           />
         </Suspense>
       )}

@@ -3,6 +3,7 @@ import { collection, onSnapshot } from 'firebase/firestore';
 import { Clock, ShieldAlert, ShieldCheck, Trash2, UserCheck, UserPlus, Wand2 } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { getFullName, getPerson } from '../utils/familyUtils';
+import ImportExport from './ImportExport';
 import Modal from './Modal';
 import '../styles/AdminPanel.css';
 
@@ -25,6 +26,10 @@ export default function AdminPanel({
   onFillMissingSurnames,
   onOpenMarriedSurnames,
   onOpenRecentActivity,
+  exportData,
+  onImport,
+  onExportImage,
+  onExportPDF,
 }) {
   const [newAdminEmail, setNewAdminEmail] = useState('');
   const [userLinks, setUserLinks] = useState(null); // null = not loaded yet
@@ -244,6 +249,18 @@ export default function AdminPanel({
         <button type="button" className="admin-secondary-btn" onClick={onOpenMarriedSurnames}>
           <UserCheck size={14} /> Update Married Surnames
         </button>
+      </section>
+
+      <section className="admin-section">
+        <h3>Backup &amp; Restore</h3>
+        <p className="admin-muted">Export the whole tree as a JSON backup, restore from one, or export it as an image or PDF.</p>
+        <ImportExport
+          exportData={exportData}
+          onImport={onImport}
+          onExportImage={onExportImage}
+          onExportPDF={onExportPDF}
+          label="Import / Export"
+        />
       </section>
 
       <section className="admin-section admin-danger-zone">

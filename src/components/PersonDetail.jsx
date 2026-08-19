@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion, Reorder, useDragControls } from 'framer-motion';
-import { BadgeCheck, Baby, Briefcase, Cake, ChevronDown, ChevronUp, Clock, Eye, GitBranch, GripVertical, HeartHandshake, Mail, MapPin, Pencil, Phone, Route, Share2, Sparkles, Trash2, UserPlus, Users, X, XCircle } from 'lucide-react';
+import { BadgeCheck, Baby, Briefcase, Cake, ChevronDown, ChevronUp, Clock, Eye, GitBranch, GripVertical, HeartHandshake, Mail, MapPin, Pencil, Phone, Route, Sparkles, Trash2, UserPlus, Users, X, XCircle } from 'lucide-react';
 import {
   formatBirthdayNoYear,
   formatDateDisplay,
@@ -205,7 +205,6 @@ export default function PersonDetail({
   overrides = [],
   onEditRelationship,
 }) {
-  const [linkCopied, setLinkCopied] = useState(false);
   if (!person) return null;
 
   const spouse = getSpouse(persons, person);
@@ -231,21 +230,6 @@ export default function PersonDetail({
   const stats = getFamilyStats(persons, person);
   const hasStats = stats && (stats.childrenCount > 0 || stats.grandchildrenCount > 0 || stats.siblingsCount > 0);
   const isMe = !!meId && meId === person.id;
-
-  // Deep link straight to this person (see App's ?person=<id> handler). Uses the
-  // current origin+path so the copied URL works from whichever host is serving
-  // the app (Firebase root or GitHub Pages subpath).
-  const handleCopyLink = () => {
-    if (!navigator.clipboard) return;
-    const url = `${window.location.origin}${window.location.pathname}?person=${person.id}`;
-    navigator.clipboard
-      .writeText(url)
-      .then(() => {
-        setLinkCopied(true);
-        setTimeout(() => setLinkCopied(false), 2000);
-      })
-      .catch(() => {});
-  };
 
   return (
     <motion.aside
@@ -415,9 +399,6 @@ export default function PersonDetail({
         {onViewTree && (
           <button type="button" onClick={() => onViewTree(person.id)}><GitBranch size={14} /> View Tree</button>
         )}
-        <button type="button" onClick={handleCopyLink}>
-          <Share2 size={14} /> {linkCopied ? 'Link Copied ✓' : 'Copy Link'}
-        </button>
         {!isRoot && (
           <button type="button" onClick={onSetRoot} title="Makes this your own starting view when you open the tree — doesn't change anyone else's view">
             <Eye size={14} /> View as this person
