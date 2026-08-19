@@ -73,7 +73,7 @@
    a quick glance list that shouldn't push everything else down the page just
    because there happen to be 10 of them. */
 .stats-panel-birthdays {
-  max-height: 135px;
+  max-height: 56px;
   overflow-y: auto;
   padding-right: 4px;
 }
@@ -237,6 +237,6 @@
   }
 
   .stats-panel-names {
-    max-height: 340px;
+    max-height: 460px;
   }
 }

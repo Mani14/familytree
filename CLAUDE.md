@@ -94,6 +94,35 @@ classify locally + via the Worker, resolve the answer with real code.
   here without first checking whether it's actually this rule in effect —
   read the extensive comments in `familyUtils.js` around
   `tamilUncleAuntPairTerm`'s `invertSide` parameter first.
+- **Any logic keyed off `Object.keys(persons)` or a `Map`/`Set` built from
+  it inherits Firestore's field-order non-guarantee** (see the bullet above
+  about signatures) — this isn't just a `JSON.stringify` gotcha. `getForestRoots`
+  picking a top couple's canonical root by checking only ONE spouse's own
+  `childrenIds` to find their connecting descendant looked fine in isolation,
+  but when that array was asymmetric (a real, separate data bug — a child
+  recorded under one parent but not the other), the result silently depended
+  on which spouse Firestore happened to list first, so the exact same data
+  could produce a different "Generation" number in Family Statistics on
+  every reload. Fixed by checking both spouses' arrays together — but the
+  general lesson is: any tie-break or "pick one of several equally-valid
+  candidates" logic over `persons` needs an explicit, data-independent
+  tie-break (alphabetical by id, etc.), not "whichever came first."
+- **A fallback that inherits a relative's already-computed term must
+  re-derive the correctly-gendered word for the person INHERITING it, not
+  copy the term verbatim.** `resolveTamilTermChained`/`resolveEnglishTermChained`'s
+  sibling-inheritance fallback (someone with no direct relationship of their
+  own, related only via being their sibling's sibling) used to return the
+  sibling's own term as-is — so a man whose only connection to the tree was
+  being the brother of a woman married to a cross-cousin inherited her
+  feminine term (தங்கை / "1st Cousin's Wife") unchanged. Fixed via
+  `SIBLING_TERM_GENDER_PAIRS` (Tamil) and `ENGLISH_SIBLING_GENDER_PAIRS`
+  (English, restricted to plain symmetric words only — a compound phrase
+  like "1st Cousin's Wife" has no real English equivalent for a different
+  person, so it now correctly returns nothing rather than a wrong phrase).
+  Same lesson applies to `tamilCrossCousinSpouseTerm`, which used to infer a
+  spouse's gender from their cross-cousin's gender instead of checking the
+  spouse's own recorded gender — always prefer the actual person's own
+  `gender` field over inferring it from someone else's.
 - **A Grep-tool display quirk**: search results have occasionally rendered
   `//` (a real comment marker in the file) as a stray `\` in this
   environment. If a Grep result shows something like `\ Fallback #3:` where
@@ -110,6 +139,14 @@ classify locally + via the Worker, resolve the answer with real code.
 - **Firebase service account** (`FIREBASE_SERVICE_ACCOUNT` GitHub secret)
   and **Cloudflare account access** are the two credentials with real
   blast radius in this project — don't request or handle these casually.
+  A plaintext copy has shown up locally in the user's Downloads folder more
+  than once (`family-tree-*-firebase-adminsdk-*.json`) — if you spot it,
+  mention it's worth moving somewhere more secure, but don't move/delete it
+  yourself without being asked. If asked to use it for a direct Firestore
+  write (see SKILLS.md's "Bulk-edit live Firestore data directly"), remember
+  it bypasses the app's own Undo history entirely — get explicit
+  confirmation of the exact change set before writing, not just permission
+  to use the credential in general.
 - Never suggest routing around the Blaze-plan constraint by just paying for
   it without asking first — the user has consistently preferred staying on
   free tiers and re-architecting (Cloudflare instead of Firebase Functions)
@@ -129,3 +166,17 @@ classify locally + via the Worker, resolve the answer with real code.
 - Says "push" to mean "commit and push everything pending," not just the
   latest change — check `git status` for the full pending set before
   committing.
+- For a data fix affecting many people identified by name, will choose the
+  faster "direct Admin SDK write" path over the safer "Export JSON → edit →
+  Import" path when explicitly offered the choice — but still wants the full
+  resolved name→person mapping shown and confirmed before anything is
+  actually written, especially where a name required fuzzy-matching or a
+  spouse lookup (several people are recorded under a married-in surname).
+- When a UI/relationship bug is reported from a screenshot, don't assume
+  the first plausible-looking cause is right — verify against the live data
+  itself (export or an Admin SDK read) rather than reasoning from a
+  synthetic test case alone. Two bugs this session were initially
+  misdiagnosed from code-reading alone (the wrong person's gender field
+  blamed for a "Wife"/தங்கை mislabel; a "should be Generation III" report
+  that turned out to be a completely different order-dependency bug) and
+  only found by actually pulling the real records.

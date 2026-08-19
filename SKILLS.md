@@ -127,6 +127,88 @@ isn't readable from the client SDK, by design — see `AdminPanel.jsx`'s
 For real login data: **Firebase Console → Authentication → Users**
 (https://console.firebase.google.com/project/family-tree-3b760/authentication/users).
 
+## Bulk-edit live Firestore data directly (Admin SDK)
+
+For a data fix that touches many people at once by name (e.g. "set these 18
+people's job title") — too tedious to do one-by-one in the UI, but not worth
+building a permanent admin feature for a one-off. This bypasses the app (and
+its Undo) entirely, so treat it as a real, confirmed-before-you-write action,
+not a routine one:
+
+1. **Check for a service-account key first** — if one isn't already sitting
+   somewhere local (this project's has shown up in the user's Downloads
+   folder as `family-tree-*-firebase-adminsdk-*.json` more than once), you'd
+   need one generated via Firebase Console → Project Settings → Service
+   Accounts, which is itself worth flagging rather than doing silently (see
+   CLAUDE.md's Secrets section — this is the single highest-blast-radius
+   credential in the project).
+2. Set up a throwaway scratchpad project (don't add `firebase-admin` to this
+   repo's own `package.json` — it's a one-off tool, not an app dependency):
+   ```bash
+   mkdir /path/to/scratchpad/fb-admin-task && cd $_
+   npm init -y && npm install firebase-admin
+   ```
+3. **Fetch the live document first and match names against it before writing
+   anything** — never assume a name string maps to one obvious person. This
+   family tree has multiple people sharing an exact full name, and several
+   women recorded under a married-in surname (their spouse's first name), so
+   a name from a casual request often isn't the literal person/field key:
+   ```js
+   import { initializeApp, cert } from 'firebase-admin/app';
+   import { getFirestore } from 'firebase-admin/firestore';
+   import { readFileSync } from 'fs';
+   initializeApp({ credential: cert(JSON.parse(readFileSync('<key path>', 'utf8'))) });
+   const db = getFirestore();
+   const persons = (await db.doc('families/main').get()).data().persons;
+   // fuzzy-match target names against persons, print id + current value + proposed
+   // value for EVERY match, and flag ambiguous/no-match cases instead of guessing
+   ```
+4. **Show the full resolved mapping to the user and get explicit confirmation
+   before writing** — especially for any name that needed fuzzy-matching,
+   spouse-lookup, or had more than one candidate.
+5. **Write with dot-notation field paths, never a full-document `.set()`** —
+   this only touches the specific leaf fields you mean to change, so a
+   concurrent edit from someone else's browser tab isn't clobbered:
+   ```js
+   await db.doc('families/main').update({
+     'persons.someId.work': 'Software Engineer',
+     // ...one entry per field per person
+   });
+   ```
+6. Read the document back and print a before/after diff for every id touched,
+   so the confirmation in chat is backed by a real post-write read, not just
+   "the call didn't throw."
+7. Tell the user afterward that this bypassed Undo — if something needs
+   correcting, it's a manual fix or another script, not one click.
+
+For anything that ISN'T a rare bulk one-off (recurring corrections, something
+a non-technical family member should be able to do themselves), build a real
+admin-panel action instead (see `AdminPanel.jsx`'s "Fill Missing Surnames" /
+"Update Married Surnames" for the pattern: compute candidates, show a
+reviewable preview, apply as one `bulkUpdatePersons` call so it's one Undo
+step) — that stays inside the app's own permission model and Undo history.
+
+## Run a throwaway script that imports a file with internal relative imports
+
+`familyUtils.js` has zero internal imports, so importing it directly via a
+`file:///…` URL in plain Node (see "Test a relationship-engine change" above)
+just works. Files that import *other* project files without an extension
+(Vite/webpack-style, e.g. `useTreeLayout.js`'s `from '../utils/familyUtils'`)
+don't — plain Node ESM requires an explicit `.js` and fails with
+`ERR_MODULE_NOT_FOUND`. Bundle it with the project's own `esbuild` first
+(already a transitive dependency, no install needed) rather than rewriting
+the target file's imports or giving up on testing it in isolation:
+
+```bash
+./node_modules/.bin/esbuild your-script.mjs --bundle --platform=node \
+  --format=esm --outfile=your-script.bundle.mjs --external:fs
+node your-script.bundle.mjs
+```
+
+Use plain `C:/...`-style absolute paths (or paths relative to the script) in
+the script's own imports, not `file:///C:/...` URLs — esbuild's resolver
+doesn't accept `file://` specifiers the way Node's own loader does.
+
 ## Restore from a backup
 
 Any file in the "Family Tree Backups" Google Drive folder is already in the
