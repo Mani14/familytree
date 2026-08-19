@@ -1090,8 +1090,6 @@ export default function App() {
               isHighlighted={highlightedIds.has(selected.id)}
               meId={meId}
               onSetMe={requestSetMe}
-              user={user}
-              isAdmin={isAdmin}
               showAges={appSettings.features.showAges}
               onClose={closeDetail}
               onNavigate={handleSelect}
@@ -1289,7 +1287,7 @@ export default function App() {
           persons={persons}
           personId={formState.personId}
           relation="child"
-          onLinkExisting={handleLinkExisting}
+          onLinkExisting={formState.linkToMe ? undefined : handleLinkExisting}
           onSave={handleFormSave}
           onCancel={closeForm}
         />
@@ -1302,7 +1300,7 @@ export default function App() {
           persons={persons}
           personId={formState.personId}
           relation="spouse"
-          onLinkExisting={handleLinkExisting}
+          onLinkExisting={formState.linkToMe ? undefined : handleLinkExisting}
           onSave={handleFormSave}
           onCancel={closeForm}
         />
@@ -1318,7 +1316,7 @@ export default function App() {
           persons={persons}
           personId={formState.personId}
           relation="parent"
-          onLinkExisting={handleLinkExisting}
+          onLinkExisting={formState.linkToMe ? undefined : handleLinkExisting}
           onSave={handleFormSave}
           onCancel={closeForm}
         />
@@ -1344,7 +1342,7 @@ export default function App() {
           persons={persons}
           personId={formState.personId}
           relation="sibling"
-          onLinkExisting={handleLinkExisting}
+          onLinkExisting={formState.linkToMe ? undefined : handleLinkExisting}
           onSave={handleFormSave}
           onCancel={closeForm}
         />

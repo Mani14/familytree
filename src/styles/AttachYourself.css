@@ -1,3 +1,13 @@
+/* Modal's own `title` prop only ever becomes an invisible aria-label — this
+   is the actual visible heading, so it needs the close button's corner
+   clearance (top:12px/right:12px, 32px wide) that used to sit on the first
+   hint paragraph back when there was no heading above it. */
+.attach-yourself-title {
+  margin: 0 0 4px;
+  padding-right: 40px;
+  font-size: 18px;
+}
+
 .attach-step {
   display: flex;
   flex-direction: column;
@@ -6,11 +16,6 @@
 
 .attach-step-hint {
   margin: 0;
-  /* Modal's close button sits at top:12px/right:12px, 32px wide — this modal's
-     content starts immediately with this hint (no title bar above it to give
-     the corner natural clearance, unlike e.g. ConfirmDialog's icon), so without
-     this the first line of text runs straight under the button. */
-  padding-right: 40px;
   font-size: 0.92rem;
   color: var(--color-text-muted, var(--color-text));
 }
@@ -77,9 +82,10 @@
   background: var(--color-surface);
   color: var(--color-text);
   font-family: var(--font);
-  font-size: 13px;
+  font-size: 16px;
+  min-height: 48px;
   text-align: left;
-  padding: 10px 12px;
+  padding: 12px 14px;
   cursor: pointer;
   transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
 }
@@ -96,12 +102,16 @@
 }
 
 .attach-search-input {
-  padding: 8px 10px;
+  /* 16px is not just sizing — under that, iOS Safari auto-zooms the whole
+     page on focus, a jarring surprise for exactly the kind of low-mobile-
+     literacy user this modal is designed for. */
+  min-height: 48px;
+  padding: 12px 14px;
   border-radius: 8px;
   border: 1px solid var(--color-border);
   background: var(--color-surface);
   color: var(--color-text);
-  font-size: 0.95rem;
+  font-size: 16px;
 }
 
 .attach-search-results {
@@ -117,12 +127,14 @@
 
 .attach-search-results button {
   width: 100%;
+  min-height: 48px;
   text-align: left;
-  padding: 8px 10px;
+  padding: 12px 14px;
   border-radius: 8px;
   border: 1px solid transparent;
   background: transparent;
   color: var(--color-text);
+  font-size: 16px;
   cursor: pointer;
 }
 
@@ -155,18 +167,38 @@
   }
 }
 
-/* The one forward-moving action on this step ("my name isn't listed") —
-   styled as a real button, unlike the plain-text .attach-back-btn links used
-   everywhere else in this wizard, so it doesn't read as a dim afterthought. */
+/* Same size/shape as .attach-forward-btn, just a neutral border instead of
+   the primary color — a low-literacy user shouldn't have to notice a plain-
+   text link is even tappable; both directions here read as equally real
+   buttons now, not one dim afterthought next to one real action. */
+.attach-back-btn-strong {
+  min-height: 48px;
+  padding: 12px 18px;
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-pill, 999px);
+  background: transparent;
+  color: var(--color-text);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+@media (hover: hover) {
+  .attach-back-btn-strong:hover {
+    border-color: var(--color-text-muted);
+    color: var(--color-text);
+  }
+}
+
 .attach-forward-btn {
   align-self: flex-start;
+  min-height: 48px;
   margin-top: 4px;
-  padding: 8px 14px;
+  padding: 12px 18px;
   border: 1.5px solid var(--color-primary);
   border-radius: var(--radius-pill, 999px);
   background: transparent;
   color: var(--color-primary);
-  font-size: 0.85rem;
+  font-size: 16px;
   font-weight: 600;
   cursor: pointer;
   transition: background var(--duration-fast, 120ms) ease, color var(--duration-fast, 120ms) ease;
@@ -175,6 +207,20 @@
 @media (hover: hover) {
   .attach-forward-btn:hover {
     background: var(--color-primary);
+    color: #fff;
+  }
+}
+
+/* The one clearly-primary action on the "Is this you?" confirmation screen —
+   filled instead of outlined, so it's unmistakably the recommended next tap. */
+.attach-confirm-btn {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+@media (hover: hover) {
+  .attach-confirm-btn:hover {
+    background: var(--color-primary-hover, var(--color-primary));
     color: #fff;
   }
 }

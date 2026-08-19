@@ -24,6 +24,7 @@ export default function AttachYourself({ persons, onAttach, onMarkAsMe, onCancel
   const [stage, setStage] = useState('search');
   const [query, setQuery] = useState('');
   const [anchorId, setAnchorId] = useState(null);
+  const [pendingMeId, setPendingMeId] = useState(null);
 
   const matches = useMemo(() => {
     const term = query.trim().toLowerCase();
@@ -34,6 +35,7 @@ export default function AttachYourself({ persons, onAttach, onMarkAsMe, onCancel
   }, [persons, query]);
 
   const anchor = anchorId ? persons[anchorId] : null;
+  const pendingMe = pendingMeId ? persons[pendingMeId] : null;
   const options = anchor ? RELATION_OPTIONS.filter((opt) => opt.show(anchor)) : [];
 
   const goToStage = (next) => {
@@ -59,16 +61,38 @@ export default function AttachYourself({ persons, onAttach, onMarkAsMe, onCancel
           <ul className="attach-search-results">
             {matches.map((person) => (
               <li key={person.id}>
-                <button type="button" onClick={() => onMarkAsMe(person.id)}>
+                <button type="button" onClick={() => { setPendingMeId(person.id); setStage('confirmMe'); }}>
                   {getDisplayName(person)}
                 </button>
               </li>
             ))}
           </ul>
         )}
-        {query.trim() && matches.length === 0 && <p className="attach-step-empty">No matches found.</p>}
+        {query.trim() && matches.length === 0 && (
+          <p className="attach-step-empty">
+            No one matching "{query.trim()}" found — try just your first name, or tap below if you're not in the tree yet.
+          </p>
+        )}
         <button type="button" className="attach-forward-btn" onClick={() => goToStage('searchRelative')}>
           My name isn't listed →
+        </button>
+      </div>
+    );
+  } else if (stage === 'confirmMe' && pendingMe) {
+    step = (
+      <div className="attach-step">
+        <div className="attach-anchor-preview">
+          <span className={`avatar avatar-${pendingMe.gender}`}>
+            {pendingMe.photo ? <img src={pendingMe.photo} alt="" /> : getInitials(pendingMe)}
+          </span>
+          <span className="attach-anchor-name">{getFullName(pendingMe)}</span>
+        </div>
+        <p className="attach-step-hint">Is this you?</p>
+        <button type="button" className="attach-forward-btn attach-confirm-btn" onClick={() => onMarkAsMe(pendingMeId)}>
+          ✓ Yes, that's me
+        </button>
+        <button type="button" className="attach-back-btn attach-back-btn-strong" onClick={() => { setPendingMeId(null); setStage('search'); }}>
+          ← No, search again
         </button>
       </div>
     );
@@ -95,8 +119,12 @@ export default function AttachYourself({ persons, onAttach, onMarkAsMe, onCancel
             ))}
           </ul>
         )}
-        {query.trim() && matches.length === 0 && <p className="attach-step-empty">No matches found.</p>}
-        <button type="button" className="attach-back-btn" onClick={() => goToStage('search')}>
+        {query.trim() && matches.length === 0 && (
+          <p className="attach-step-empty">
+            No one matching "{query.trim()}" found — try just their first name.
+          </p>
+        )}
+        <button type="button" className="attach-back-btn attach-back-btn-strong" onClick={() => goToStage('search')}>
           ← Back
         </button>
       </div>
@@ -127,15 +155,27 @@ export default function AttachYourself({ persons, onAttach, onMarkAsMe, onCancel
             ))}
           </div>
         </div>
-        <button type="button" className="attach-back-btn" onClick={() => setAnchorId(null)}>
+        <button type="button" className="attach-back-btn attach-back-btn-strong" onClick={() => setAnchorId(null)}>
           ← Choose a different relative
         </button>
       </div>
     );
   }
 
+  // Reinforces what each screen is for without a separate step-counter UI —
+  // the modal's own title changes as you move through the wizard.
+  let title = 'Find Yourself';
+  if (stage === 'confirmMe') title = 'Is This You?';
+  else if (stage === 'searchRelative' && !anchor) title = 'Find a Relative';
+  else if (anchor) title = 'How Are You Related?';
+
   return (
-    <Modal isOpen onClose={onCancel} title="Add Yourself to the Tree" width={420} className="attach-yourself-modal">
+    <Modal isOpen onClose={onCancel} title={title} width={420} className="attach-yourself-modal">
+      {/* Modal's own `title` prop only ever becomes an invisible aria-label
+          (see Modal.jsx) — every other modal in this app renders its own
+          visible heading in its content for a sighted reason to actually see
+          which step they're on, and this one needs that more than most. */}
+      <h2 className="attach-yourself-title">{title}</h2>
       {step}
     </Modal>
   );

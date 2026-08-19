@@ -4,6 +4,11 @@ dist-ssr
 *.local
 .vite
 
+# Real secrets (e.g. the WhatsApp Graph API access token) — never commit,
+# unlike .env.local.example which documents the shape without real values.
+.env
+.env.local
+
 # Editor
 .vscode/*
 !.vscode/extensions.json

@@ -34,8 +34,6 @@ Live at:
   and [`worker/`](worker).
 - **Find Connection** — pick any two people and watch an animated path trace
   the blood/marriage connection between them, narrating each stop.
-- **Birthday Wishes** — anyone signed in can leave a text wish on a person's
-  profile; visible to everyone, deletable by the author or an admin.
 - **Daily birthday-alert emails** — a Cloudflare Worker Cron Trigger emails
   the birthday person directly (if they've linked their own account) and,
   if an admin has turned it on, every signed-in family member on someone's
@@ -86,7 +84,7 @@ here needs a paid plan anywhere.
 │    engine (LOCAL,    │◄──────►│  Firestore                │
 │    deterministic)    │        │  families/main (the tree) │
 │  - all UI/state       │        │  families/relationshipOverrides│
-└──────────┬───────────┘        │  birthdayWishes, users/{uid}, settings/*│
+└──────────┬───────────┘        │  users/{uid}, settings/*  │
            │                    └───────────────▲──────────┘
            │ question TEXT ONLY,                 │ read-only, service-account
            │ never family data                   │ JWT (no signed-in user)
@@ -166,18 +164,12 @@ Other documents:
   their own login email (cached here since the birthday-alert Worker cron
   can only read Firestore, not Firebase Auth directly). Never shared with
   anyone else.
-- `birthdayWishes/{wishId}` — one document per wish left on a person's
-  profile: `{ personId, message, fromUid, fromName, createdAt }`. A real
-  collection, not a field on `families/main`, since wishes accumulate
-  indefinitely and each one needs its own delete permission (author or
-  admin) — a rule over one big array field can't express that.
 - `settings/admins`, `settings/app` — admin list and app-wide feature toggles
   (see Admin Settings in the app), including the birthday-alert email job's
   master on/off switch.
 
 Firestore security rules ([`firestore.rules`](firestore.rules)): any
-signed-in user can read/write the shared tree, relationship overrides, and
-birthday wishes (create/delete only the ones you authored, plus admins);
+signed-in user can read/write the shared tree and relationship overrides;
 `users/{uid}` is private to that account (plus admins); `settings/*` is
 admin-write, signed-in-read.
 

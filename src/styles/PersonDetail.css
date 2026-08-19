@@ -132,6 +132,18 @@
   margin-right: 4px;
 }
 
+/* Same green already used for a "good/confirmed" state elsewhere in the app
+   (DataHealthPanel's no-issues checkmark) rather than a new ad hoc color. */
+.detail-badge-me {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(34, 197, 94, 0.14);
+  color: #16a34a;
+  font-weight: 600;
+  margin-right: 4px;
+}
+
 .detail-relation-edit-btn {
   display: flex;
   align-items: center;
@@ -234,117 +246,6 @@
   margin: 4px 0 0;
   white-space: pre-wrap;
   color: var(--color-text-muted);
-}
-
-.detail-wishes {
-  margin-bottom: 16px;
-  font-size: 13px;
-}
-
-.detail-wishes-title {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin-bottom: 6px;
-}
-
-.detail-wishes-list {
-  list-style: none;
-  margin: 0 0 8px;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.detail-wishes-list li {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 6px 10px;
-  border-radius: var(--radius-sm);
-  background: var(--color-bg);
-  border: 1px solid var(--color-border);
-}
-
-.detail-wish-body {
-  min-width: 0;
-  flex: 1;
-}
-
-.detail-wish-from {
-  font-size: 11.5px;
-  font-weight: 600;
-  color: var(--color-text-muted);
-}
-
-.detail-wish-message {
-  margin: 2px 0 0;
-  color: var(--color-text);
-  white-space: pre-wrap;
-}
-
-.detail-wish-remove {
-  flex-shrink: 0;
-  border: none;
-  background: none;
-  color: var(--color-text-muted);
-  font-size: 16px;
-  line-height: 1;
-  cursor: pointer;
-  padding: 0 2px;
-}
-
-@media (hover: hover) {
-  .detail-wish-remove:hover {
-    color: #dc2626;
-  }
-}
-
-.detail-wish-form {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.detail-wish-form textarea {
-  resize: vertical;
-  font: inherit;
-  font-size: 13px;
-  padding: 6px 8px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--color-border);
-  background: var(--color-bg);
-  color: var(--color-text);
-}
-
-.detail-wish-form button {
-  align-self: flex-end;
-  border: none;
-  background: var(--color-primary);
-  color: #fff;
-  border-radius: var(--radius-pill);
-  padding: 5px 14px;
-  font-size: 12.5px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.detail-wish-form button:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-@media (hover: hover) {
-  .detail-wish-form button:not(:disabled):hover {
-    background: var(--color-primary-hover);
-  }
-}
-
-.detail-muted {
-  color: var(--color-text-muted);
-  font-size: 12.5px;
-  margin: 0;
 }
 
 .detail-relations {

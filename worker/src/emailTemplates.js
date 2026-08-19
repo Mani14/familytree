@@ -39,7 +39,7 @@ export function birthdayPersonEmail({ firstName: rawFirstName, appUrl }) {
         Wishing you a wonderful day, ${firstName}! Your family is thinking of
         you today.
       </p>
-      <a href="${appUrl}" style="${BUTTON_STYLE}">💌 See your wishes</a>
+      <a href="${appUrl}" style="${BUTTON_STYLE}">🌳 Open Family Tree</a>
     </div>
   `);
   return { subject: `🎉 Happy Birthday, ${rawFirstName}!`, html };
@@ -56,10 +56,9 @@ export function birthdayNotifyEmail({ firstName: rawFirstName, lastName: rawLast
     <div style="${BODY_STYLE}">
       <div style="${NAME_BANNER_STYLE}">🎈 ${fullName} 🎈</div>
       <p style="font-size:15px;line-height:1.6;margin:0 0 20px;">
-        Today is <strong>${fullName}</strong>'s birthday! Stop by and leave
-        them a wish.
+        Today is <strong>${fullName}</strong>'s birthday!
       </p>
-      <a href="${appUrl}" style="${BUTTON_STYLE}">🎁 Leave a wish</a>
+      <a href="${appUrl}" style="${BUTTON_STYLE}">🌳 Open Family Tree</a>
     </div>
   `);
   return { subject: `🎂 Today is ${rawFirstName}'s birthday`, html };

@@ -181,6 +181,50 @@ classify locally + via the Worker, resolve the answer with real code.
   it without asking first — the user has consistently preferred staying on
   free tiers and re-architecting (Cloudflare instead of Firebase Functions)
   to do so. Surface the tradeoff; let them decide.
+- **A `.env` file at the repo root holds a live WhatsApp Graph API access
+  token** (`whatsapp_token=...`) — real and usable, not a placeholder. It's
+  gitignored (added after the fact — it was untracked but NOT ignored when
+  first noticed, so double-check it's still listed in `.gitignore` if that
+  file is ever restructured) and was never committed. Nothing in `src/` or
+  `worker/` reads this file — it exists purely from manual `curl` testing
+  in Meta's Graph API Explorer, not app code. Treat it the same as any other
+  API key: if it surfaces in plaintext (chat, a log), it's a rotation event.
+
+## WhatsApp Business API — explored, not adopted
+
+A Meta app ("Family Tree Mani App") with the WhatsApp Business Platform was
+registered and successfully tested (free-form `curl` messages sent via
+`graph.facebook.com/v25.0/{phone-number-id}/messages`, confirmed delivered).
+Two uses were considered and explicitly **not** pursued for this app:
+
+- **WhatsApp-based OTP login**, as an alternative/addition to Google
+  Sign-In. Rejected: Google Sign-In already works for everyone; WhatsApp
+  OTP doesn't plug into Firebase Auth as a built-in provider (Firebase's own
+  Phone Auth needs the paid Blaze plan, and this would be a different,
+  from-scratch mechanism anyway — generate/store/verify OTP codes, then mint
+  a Firebase custom token) — a real new backend subsystem to replace
+  something that isn't broken.
+- **WhatsApp birthday-reminder messages**, as an alternative/addition to the
+  email job (see the Brevo section above). Rejected on cost grounds: a
+  birthday message is business-initiated (nobody messaged the account that
+  day), and Meta retired its free monthly conversation allowance on
+  **July 1, 2025** — confirmed live during this decision, not assumed, since
+  the user specifically recalled the old "1,000 free messages" policy and it
+  needed checking, not just correcting from memory. There is now no free
+  tier for this kind of outbound message at all; it would have been this
+  project's first genuine recurring cost, unlike every other integration
+  here (Cloudflare, Groq, Brevo, GCP read-only service account) which are
+  all free at this app's scale.
+
+Both rejections were the user's own call after the tradeoffs were laid out —
+if WhatsApp comes up again, these are already-considered-and-declined paths,
+not unexplored ideas; check with the user before re-proposing either without
+new information (e.g. a specific reported pain point with Google Sign-In).
+
+Separately: the WhatsApp Business Platform's **free tier only sends to up to
+5 pre-verified test recipient numbers** — reaching real family members at
+scale would require Meta business verification and a production phone
+number regardless of which use case it's for.
 
 ## User's working style (learned this session)
 
