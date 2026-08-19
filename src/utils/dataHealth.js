@@ -230,5 +230,50 @@ export function runDataHealthCheck(persons) {
     }
   }
 
+  // Likely duplicate people — the same relative added twice by different branches
+  // of a shared, multi-editor tree. A name match ALONE is far too noisy here (Tamil
+  // families routinely name a child after a living grandparent), so a pair is only
+  // flagged when the name is corroborated by a second signal: an identical recorded
+  // birth date, or at least one shared relative (parent/child/spouse) — the
+  // fingerprint of two records describing one real person. Info severity, no
+  // auto-fix: merging two people is destructive and only a human can confirm it.
+  const normName = (p) => `${p.firstName || ''} ${p.lastName || ''}`.trim().toLowerCase().replace(/\s+/g, ' ');
+  const relativesOf = (p) => new Set([...p.parentIds, ...p.childrenIds, ...(p.spouseId ? [p.spouseId] : [])]);
+  const byName = new Map();
+  for (const id of ids) {
+    const person = persons[id];
+    if (person.isPlaceholder || !person.firstName.trim()) continue;
+    const key = normName(person);
+    if (!key) continue;
+    if (!byName.has(key)) byName.set(key, []);
+    byName.get(key).push(id);
+  }
+  const seenDupePairs = new Set();
+  for (const group of byName.values()) {
+    if (group.length < 2) continue;
+    for (let i = 0; i < group.length; i += 1) {
+      for (let j = i + 1; j < group.length; j += 1) {
+        const a = persons[group[i]];
+        const b = persons[group[j]];
+        const sameDob = a.dob && b.dob && a.dob === b.dob;
+        const relA = relativesOf(a);
+        const sharesRelative = [...relativesOf(b)].some((rid) => relA.has(rid));
+        if (!sameDob && !sharesRelative) continue;
+        const pairKey = [group[i], group[j]].sort().join('|');
+        if (seenDupePairs.has(pairKey)) continue;
+        seenDupePairs.add(pairKey);
+        const reason = sameDob ? 'the same birth date' : 'a shared relative';
+        issues.push({
+          id: `dup-person-${pairKey}`,
+          severity: 'info',
+          category: 'Possible duplicate person',
+          message: `${getFullName(a)} appears twice — two records share the same name and ${reason}. If they're the same person, copy any details onto one and delete the other.`,
+          personIds: [group[i], group[j]],
+          fix: null,
+        });
+      }
+    }
+  }
+
   return issues;
 }

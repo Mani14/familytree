@@ -52,12 +52,18 @@ export function useAuth() {
   // email. Runs once per sign-in; harmless to re-run if the address changes.
   useEffect(() => {
     if (!user?.uid || !user.email) return;
-    setDoc(doc(db, 'users', user.uid), { email: user.email }, { merge: true }).catch(() => {});
+    // Not surfaced anywhere in the UI (this is a background cache write, not a
+    // user-initiated action) — logged so a failure isn't completely invisible.
+    setDoc(doc(db, 'users', user.uid), { email: user.email }, { merge: true }).catch((err) => console.error('Failed to cache login email:', err));
   }, [user?.uid, user?.email]);
 
   const signIn = useCallback(() => {
     googleProvider.setCustomParameters({ prompt: 'select_account' });
-    return signInWithPopup(auth, googleProvider).catch(() => {});
+    // auth/popup-closed-by-user is the common case (user just dismissed the
+    // popup) — only log genuine failures so this isn't noisy in the console.
+    return signInWithPopup(auth, googleProvider).catch((err) => {
+      if (err?.code !== 'auth/popup-closed-by-user') console.error('Sign-in failed:', err);
+    });
   }, []);
 
   const signOut = useCallback(() => fbSignOut(auth), []);
@@ -66,7 +72,7 @@ export function useAuth() {
     (personId) => {
       if (!user?.uid) return;
       setMeId(personId); // optimistic; the snapshot listener will confirm
-      setDoc(doc(db, 'users', user.uid), { meId: personId ?? null }, { merge: true }).catch(() => {});
+      setDoc(doc(db, 'users', user.uid), { meId: personId ?? null }, { merge: true }).catch((err) => console.error('Failed to save meId:', err));
     },
     [user?.uid]
   );
@@ -75,7 +81,7 @@ export function useAuth() {
     (personId) => {
       if (!user?.uid) return;
       setMyRootId(personId); // optimistic; the snapshot listener will confirm
-      setDoc(doc(db, 'users', user.uid), { rootId: personId ?? null }, { merge: true }).catch(() => {});
+      setDoc(doc(db, 'users', user.uid), { rootId: personId ?? null }, { merge: true }).catch((err) => console.error('Failed to save rootId:', err));
     },
     [user?.uid]
   );

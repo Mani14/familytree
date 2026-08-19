@@ -1,0 +1,19 @@
+{
+  "name": "Family Tree",
+  "short_name": "Family Tree",
+  "description": "Build and explore your shared family tree, with automatic English & Tamil relationship terms.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0b1220",
+  "theme_color": "#0b1220",
+  "icons": [
+    {
+      "src": "favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

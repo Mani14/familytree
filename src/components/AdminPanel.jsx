@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
-import { ShieldAlert, ShieldCheck, Trash2, UserCheck, UserPlus, Wand2 } from 'lucide-react';
+import { Clock, ShieldAlert, ShieldCheck, Trash2, UserCheck, UserPlus, Wand2 } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { getFullName, getPerson } from '../utils/familyUtils';
 import Modal from './Modal';
@@ -24,10 +24,12 @@ export default function AdminPanel({
   onOpenDataHealth,
   onFillMissingSurnames,
   onOpenMarriedSurnames,
+  onOpenRecentActivity,
 }) {
   const [newAdminEmail, setNewAdminEmail] = useState('');
   const [userLinks, setUserLinks] = useState(null); // null = not loaded yet
   const [settingsError, setSettingsError] = useState(null);
+  const [adminError, setAdminError] = useState(null);
   const [fillResult, setFillResult] = useState(null);
 
   const handleFillMissingSurnames = () => {
@@ -65,8 +67,14 @@ export default function AdminPanel({
   const handleAddAdmin = (e) => {
     e.preventDefault();
     if (!newAdminEmail.trim()) return;
-    addAdmin(newAdminEmail);
+    setAdminError(null);
+    addAdmin(newAdminEmail).catch((err) => setAdminError(err.message || String(err)));
     setNewAdminEmail('');
+  };
+
+  const handleRemoveAdmin = (email) => {
+    setAdminError(null);
+    removeAdmin(email).catch((err) => setAdminError(err.message || String(err)));
   };
 
   return (
@@ -75,6 +83,9 @@ export default function AdminPanel({
 
       <section className="admin-section">
         <h3>Admins</h3>
+        {adminError && (
+          <p className="admin-muted admin-error">Couldn't save: {adminError}</p>
+        )}
         <ul className="admin-list">
           {permanentAdminEmails.map((email) => (
             <li key={email}>
@@ -85,7 +96,7 @@ export default function AdminPanel({
           {adminEmails.map((email) => (
             <li key={email}>
               <span>{email}</span>
-              <button type="button" className="admin-remove-btn" onClick={() => removeAdmin(email)} aria-label={`Remove admin ${email}`}>
+              <button type="button" className="admin-remove-btn" onClick={() => handleRemoveAdmin(email)} aria-label={`Remove admin ${email}`}>
                 <Trash2 size={14} />
               </button>
             </li>
@@ -199,6 +210,14 @@ export default function AdminPanel({
           Google email addresses of other accounts aren't readable from the browser —
           this shows which family member each signed-in account is linked to instead.
         </p>
+      </section>
+
+      <section className="admin-section">
+        <h3>Activity</h3>
+        <p className="admin-muted">See who added or edited which family members most recently across the shared tree.</p>
+        <button type="button" className="admin-secondary-btn" onClick={onOpenRecentActivity}>
+          <Clock size={14} /> Open Recent Activity
+        </button>
       </section>
 
       <section className="admin-section">

@@ -3,6 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- Relative href so install works from any base path (Firebase root and
+         GitHub Pages /familytree/ alike), matching vite.config's base: './'. -->
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <meta name="theme-color" content="#0b1220" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Family Tree" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
     <!-- maximum-scale/user-scalable close a gap the body touch-action fix
          (global.css) doesn't fully cover: a pinch gesture that straddles the
          canvas edge (one finger on it, one finger just outside, e.g. on the

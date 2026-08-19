@@ -15,6 +15,15 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+// The shared tree is edited by any signed-in family member, so stamp who/when
+// on each record they change (email matches the app's admin-by-email model;
+// epoch ms sorts and formats cleanly) — surfaced in PersonDetail so a later
+// viewer can see who last touched a record.
+function editStamp() {
+  const u = auth.currentUser;
+  return { lastEditedBy: u?.email || '', lastEditedAt: Date.now() };
+}
+
 export function useFamily() {
   const [persons, setPersons] = useState({});
   const [rootPersonId, setRootPersonId] = useState(null);
@@ -60,7 +69,7 @@ export function useFamily() {
       (snap) => {
         if (!snap.exists()) {
           // First-ever load: seed the shared doc from the bundled data.
-          setDoc(ref, clone(seedData)).catch(() => {});
+          setDoc(ref, clone(seedData)).catch((err) => console.error('Failed to seed shared family doc:', err));
           return;
         }
         if (snap.metadata.hasPendingWrites) return; // ignore our own optimistic echo
@@ -132,7 +141,7 @@ export function useFamily() {
           setSaveState('saved');
           setTimeout(() => setSaveState('idle'), 1500);
         })
-        .catch(() => {});
+        .catch((err) => console.error('Failed to save family data:', err));
     }, 700);
     return () => clearTimeout(saveTimer.current);
   }, [persons, rootPersonId, loading, authed]);
@@ -142,7 +151,7 @@ export function useFamily() {
     pushHistory();
     setPersons((prev) => {
       newId = generateId(prev);
-      const person = { ...createEmptyPerson(newId), ...partial, id: newId };
+      const person = { ...createEmptyPerson(newId), ...partial, id: newId, ...editStamp() };
       return { ...prev, [newId]: person };
     });
     return newId;
@@ -152,7 +161,7 @@ export function useFamily() {
     pushHistory();
     setPersons((prev) => {
       if (!prev[id]) return prev;
-      return { ...prev, [id]: { ...prev[id], ...updates } };
+      return { ...prev, [id]: { ...prev[id], ...updates, ...editStamp() } };
     });
   }, [pushHistory]);
 
@@ -165,7 +174,7 @@ export function useFamily() {
     setPersons((prev) => {
       const next = { ...prev };
       for (const [id, updates] of Object.entries(updatesById)) {
-        if (next[id]) next[id] = { ...next[id], ...updates };
+        if (next[id]) next[id] = { ...next[id], ...updates, ...editStamp() };
       }
       return next;
     });
@@ -215,6 +224,7 @@ export function useFamily() {
         ...partial,
         id: newId,
         parentIds: parentPair,
+        ...editStamp(),
       };
       const next = { ...prev, [newId]: child };
       for (const pid of parentPair) {
@@ -239,6 +249,7 @@ export function useFamily() {
         ...partial,
         id: newId,
         spouseId: personId,
+        ...editStamp(),
       };
       return {
         ...prev,
@@ -263,6 +274,7 @@ export function useFamily() {
         ...partial,
         id: newId,
         childrenIds: [personId],
+        ...editStamp(),
       };
       const next = {
         ...prev,
@@ -316,6 +328,7 @@ export function useFamily() {
         ...partial,
         id: newId,
         parentIds: [...parentIds],
+        ...editStamp(),
       };
       next = { ...next, [newId]: sibling };
       // Prepended, not appended — left is the father/blood-lineage side of the

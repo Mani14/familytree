@@ -248,6 +248,20 @@
   color: var(--color-text-muted);
 }
 
+.detail-edited {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0 0 16px;
+  font-size: 11.5px;
+  color: var(--color-text-muted);
+  opacity: 0.75;
+}
+
+.detail-edited svg {
+  flex-shrink: 0;
+}
+
 .detail-relations {
   display: flex;
   flex-direction: column;

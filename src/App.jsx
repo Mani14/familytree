@@ -7,8 +7,6 @@ import { useAdmin } from './hooks/useAdmin';
 import { useAppSettings } from './hooks/useAppSettings';
 import { useRelationshipOverrides } from './hooks/useRelationshipOverrides';
 import Login from './components/Login';
-import AttachYourself from './components/AttachYourself';
-import FindConnectionModal from './components/FindConnectionModal';
 import BrandLogo from './components/BrandLogo';
 import FamilyTree from './components/FamilyTree';
 import SearchBar from './components/SearchBar';
@@ -19,15 +17,9 @@ import AnniversaryWidget from './components/AnniversaryWidget';
 import ImportExport from './components/ImportExport';
 import ThemeToggle from './components/ThemeToggle';
 import StatsPanel from './components/StatsPanel';
-import DataHealthPanel from './components/DataHealthPanel';
-import UpdateMarriedSurnamesPanel from './components/UpdateMarriedSurnamesPanel';
 import AskPanel from './components/AskPanel';
-import AdminPanel from './components/AdminPanel';
 import MobileMenu from './components/MobileMenu';
 import ConfirmDialog from './components/ConfirmDialog';
-import FeatureShowcase from './components/FeatureShowcase';
-import RelationshipRulesPanel from './components/RelationshipRulesPanel';
-import EditRelationshipDialog from './components/EditRelationshipDialog';
 import {
   getPerson,
   getFullName,
@@ -42,6 +34,18 @@ import './styles/App.css';
 // Lazy: pulls in leaflet/react-leaflet (~150-200KB), which would otherwise
 // load on every visit even for someone who never opens the map.
 const FamilyMap = lazy(() => import('./components/FamilyMap'));
+// Lazy: admin-only or rarely-opened modals/panels — none of these are needed
+// for the default "view the tree" path, so keeping them out of the main
+// bundle shrinks the JS everyone downloads on every visit.
+const AttachYourself = lazy(() => import('./components/AttachYourself'));
+const FindConnectionModal = lazy(() => import('./components/FindConnectionModal'));
+const DataHealthPanel = lazy(() => import('./components/DataHealthPanel'));
+const UpdateMarriedSurnamesPanel = lazy(() => import('./components/UpdateMarriedSurnamesPanel'));
+const AdminPanel = lazy(() => import('./components/AdminPanel'));
+const RecentActivityPanel = lazy(() => import('./components/RecentActivityPanel'));
+const FeatureShowcase = lazy(() => import('./components/FeatureShowcase'));
+const RelationshipRulesPanel = lazy(() => import('./components/RelationshipRulesPanel'));
+const EditRelationshipDialog = lazy(() => import('./components/EditRelationshipDialog'));
 
 // Maps a formState.mode to the `relation` PersonForm/getEligibleLinkCandidates use.
 const RELATION_BY_MODE = { addParent: 'parent', addSpouse: 'spouse', addChild: 'child', addSibling: 'sibling' };
@@ -118,6 +122,7 @@ export default function App() {
   const [showStatsPanel, setShowStatsPanel] = useState(false);
   const [showDataHealth, setShowDataHealth] = useState(false);
   const [showMarriedSurnames, setShowMarriedSurnames] = useState(false);
+  const [showRecentActivity, setShowRecentActivity] = useState(false);
   const [showFeatureShowcase, setShowFeatureShowcase] = useState(false);
   const [showFamilyMap, setShowFamilyMap] = useState(false);
   const [showAdminPanel, setShowAdminPanel] = useState(false);
@@ -601,6 +606,18 @@ export default function App() {
     setLocatedId(id);
     setLocateRequest((prev) => ({ id, nonce: prev.nonce + 1 }));
   }, [revealAncestors]);
+
+  // One-time deep link: if the app was opened with ?person=<id> (a link shared
+  // from PersonDetail's "Copy Link"), open that person's card once the tree has
+  // finished loading. Guarded by a ref so it fires exactly once and never fights
+  // the user's own later navigation.
+  const deepLinkHandledRef = useRef(false);
+  useEffect(() => {
+    if (loading || deepLinkHandledRef.current) return;
+    deepLinkHandledRef.current = true;
+    const id = new URLSearchParams(window.location.search).get('person');
+    if (id && persons[id]) handleViewPersonDetails(id);
+  }, [loading, persons, handleViewPersonDetails]);
 
   // "Find Connection" travel animation — hops the located/centred person down the
   // path node-by-node instead of jumping straight to the end, so the camera visibly
@@ -1151,12 +1168,14 @@ export default function App() {
       })()}
 
       {findConnectionFromId && (
-        <FindConnectionModal
-          persons={persons}
-          fromId={findConnectionFromId}
-          onPick={handleConnectionPicked}
-          onCancel={() => setFindConnectionFromId(null)}
-        />
+        <Suspense fallback={null}>
+          <FindConnectionModal
+            persons={persons}
+            fromId={findConnectionFromId}
+            onPick={handleConnectionPicked}
+            onCancel={() => setFindConnectionFromId(null)}
+          />
+        </Suspense>
       )}
 
       {confirmDialog && (
@@ -1205,66 +1224,90 @@ export default function App() {
         <FamilyMap persons={persons} isOpen={showFamilyMap} onClose={() => setShowFamilyMap(false)} onSelect={handleLocatePerson} />
       </Suspense>
 
-      <FeatureShowcase isOpen={showFeatureShowcase} onClose={() => setShowFeatureShowcase(false)} />
+      <Suspense fallback={null}>
+        <FeatureShowcase isOpen={showFeatureShowcase} onClose={() => setShowFeatureShowcase(false)} />
+      </Suspense>
 
-      <DataHealthPanel
-        persons={persons}
-        isOpen={showDataHealth && isAdmin}
-        onClose={() => setShowDataHealth(false)}
-        onSelect={handleLocatePerson}
-        updatePerson={updatePerson}
-      />
+      <Suspense fallback={null}>
+        <DataHealthPanel
+          persons={persons}
+          isOpen={showDataHealth && isAdmin}
+          onClose={() => setShowDataHealth(false)}
+          onSelect={handleLocatePerson}
+          updatePerson={updatePerson}
+        />
+      </Suspense>
 
-      <UpdateMarriedSurnamesPanel
-        persons={persons}
-        isOpen={showMarriedSurnames && isAdmin}
-        onClose={() => setShowMarriedSurnames(false)}
-        onApply={bulkUpdatePersons}
-      />
+      <Suspense fallback={null}>
+        <UpdateMarriedSurnamesPanel
+          persons={persons}
+          isOpen={showMarriedSurnames && isAdmin}
+          onClose={() => setShowMarriedSurnames(false)}
+          onApply={bulkUpdatePersons}
+        />
+      </Suspense>
 
-      <RelationshipRulesPanel
-        overrides={relationshipOverrides}
-        isOpen={showRelationshipRules}
-        onClose={() => { setShowRelationshipRules(false); setRelationshipRuleError(null); }}
-        onRemove={handleRemoveRelationshipOverride}
-        onEditReference={handleEditReference}
-        error={relationshipRuleError}
-      />
+      <Suspense fallback={null}>
+        <RecentActivityPanel
+          persons={persons}
+          isOpen={showRecentActivity && isAdmin}
+          onClose={() => setShowRecentActivity(false)}
+          onSelect={handleLocatePerson}
+        />
+      </Suspense>
 
-      <EditRelationshipDialog
-        isOpen={!!editRelationshipState}
-        subjectLabel={editRelationshipState?.baseRelationship}
-        currentTerm={editRelationshipState?.currentTerm}
-        error={relationshipRuleError}
-        onSave={handleSaveRelationshipOverride}
-        onCancel={() => { setEditRelationshipState(null); setRelationshipRuleError(null); }}
-      />
+      <Suspense fallback={null}>
+        <RelationshipRulesPanel
+          overrides={relationshipOverrides}
+          isOpen={showRelationshipRules}
+          onClose={() => { setShowRelationshipRules(false); setRelationshipRuleError(null); }}
+          onRemove={handleRemoveRelationshipOverride}
+          onEditReference={handleEditReference}
+          error={relationshipRuleError}
+        />
+      </Suspense>
+
+      <Suspense fallback={null}>
+        <EditRelationshipDialog
+          isOpen={!!editRelationshipState}
+          subjectLabel={editRelationshipState?.baseRelationship}
+          currentTerm={editRelationshipState?.currentTerm}
+          error={relationshipRuleError}
+          onSave={handleSaveRelationshipOverride}
+          onCancel={() => { setEditRelationshipState(null); setRelationshipRuleError(null); }}
+        />
+      </Suspense>
 
       {isAdmin && (
-        <AdminPanel
-          isOpen={showAdminPanel}
-          onClose={() => setShowAdminPanel(false)}
-          persons={persons}
-          adminEmails={adminEmails}
-          permanentAdminEmails={permanentAdminEmails}
-          addAdmin={addAdmin}
-          removeAdmin={removeAdmin}
-          settings={appSettings}
-          updateSettings={updateAppSettings}
-          onRequestReset={handleRequestReset}
-          onOpenDataHealth={() => setShowDataHealth(true)}
-          onFillMissingSurnames={handleFillMissingSurnames}
-          onOpenMarriedSurnames={() => setShowMarriedSurnames(true)}
-        />
+        <Suspense fallback={null}>
+          <AdminPanel
+            isOpen={showAdminPanel}
+            onClose={() => setShowAdminPanel(false)}
+            persons={persons}
+            adminEmails={adminEmails}
+            permanentAdminEmails={permanentAdminEmails}
+            addAdmin={addAdmin}
+            removeAdmin={removeAdmin}
+            settings={appSettings}
+            updateSettings={updateAppSettings}
+            onRequestReset={handleRequestReset}
+            onOpenDataHealth={() => setShowDataHealth(true)}
+            onFillMissingSurnames={handleFillMissingSurnames}
+            onOpenMarriedSurnames={() => setShowMarriedSurnames(true)}
+            onOpenRecentActivity={() => setShowRecentActivity(true)}
+          />
+        </Suspense>
       )}
 
       {showAttachWizard && (
-        <AttachYourself
-          persons={persons}
-          onAttach={handleAttachYourself}
-          onMarkAsMe={handleMarkAnchorAsMe}
-          onCancel={() => setShowAttachWizard(false)}
-        />
+        <Suspense fallback={null}>
+          <AttachYourself
+            persons={persons}
+            onAttach={handleAttachYourself}
+            onMarkAsMe={handleMarkAnchorAsMe}
+            onCancel={() => setShowAttachWizard(false)}
+          />
+        </Suspense>
       )}
 
       {formState && formState.mode === 'edit' && (

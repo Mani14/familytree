@@ -30,14 +30,16 @@ export function useAdmin(user) {
   const email = user?.email?.toLowerCase() || null;
   const isAdmin = !!email && (PERMANENT_ADMIN_EMAILS.includes(email) || adminEmails.includes(email));
 
+  // Returns the setDoc promise so callers can surface write failures (e.g. permission
+  // denied when firestore.rules hasn't been deployed yet) instead of failing silently.
   const addAdmin = useCallback((newEmail) => {
     const clean = newEmail.trim().toLowerCase();
-    if (!clean || PERMANENT_ADMIN_EMAILS.includes(clean) || adminEmails.includes(clean)) return;
-    setDoc(doc(db, ...ADMINS_DOC), { emails: [...adminEmails, clean] }, { merge: true }).catch(() => {});
+    if (!clean || PERMANENT_ADMIN_EMAILS.includes(clean) || adminEmails.includes(clean)) return Promise.resolve();
+    return setDoc(doc(db, ...ADMINS_DOC), { emails: [...adminEmails, clean] }, { merge: true });
   }, [adminEmails]);
 
   const removeAdmin = useCallback((targetEmail) => {
-    setDoc(doc(db, ...ADMINS_DOC), { emails: adminEmails.filter((e) => e !== targetEmail) }).catch(() => {});
+    return setDoc(doc(db, ...ADMINS_DOC), { emails: adminEmails.filter((e) => e !== targetEmail) });
   }, [adminEmails]);
 
   return { isAdmin, adminsReady, adminEmails, permanentAdminEmails: PERMANENT_ADMIN_EMAILS, addAdmin, removeAdmin };
