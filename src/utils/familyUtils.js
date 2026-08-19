@@ -2208,9 +2208,11 @@ export function computeFamilyStats(persons) {
   let lifespanCount = 0;
   let mapped = 0;
   const lastNameCounts = new Map();
+  const workCounts = new Map();
   const countedCouples = new Set();
   let marriedCouples = 0;
   let verifiedProfiles = 0;
+  let withPhoto = 0;
 
   all.forEach((p) => {
     if (p.gender === 'male') males += 1;
@@ -2231,9 +2233,13 @@ export function computeFamilyStats(persons) {
     }
 
     if (p.locationLat != null && p.locationLng != null) mapped += 1;
+    if (p.photo) withPhoto += 1;
 
     const lastName = p.lastName?.trim();
     if (lastName) lastNameCounts.set(lastName, (lastNameCounts.get(lastName) || 0) + 1);
+
+    const work = p.work?.trim();
+    if (work) workCounts.set(work, (workCounts.get(work) || 0) + 1);
 
     if (p.spouseId && persons[p.spouseId]) {
       const pairKey = [p.id, p.spouseId].sort().join('|');
@@ -2262,7 +2268,14 @@ export function computeFamilyStats(persons) {
     verifiedProfiles,
     generationCount,
     mapped,
+    withPhoto,
     topLastNames: topN(lastNameCounts),
+    // Sorted by count desc then alphabetically — usually more titles than fit a
+    // color-coded chart legibly, so this feeds a plain ranked list, not a chart.
+    workBreakdown: [...workCounts.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([work, count]) => ({ work, count })),
+    peopleWithWork: [...workCounts.values()].reduce((sum, c) => sum + c, 0),
     marriedCouples,
   };
 }

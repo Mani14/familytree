@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion, Reorder, useDragControls } from 'framer-motion';
-import { BadgeCheck, Baby, Briefcase, Cake, ChevronDown, ChevronUp, Eye, GitBranch, GripVertical, HeartHandshake, Mail, MapPin, PartyPopper, Pencil, Phone, Route, Sparkles, Trash2, UserPlus, Users, X, XCircle } from 'lucide-react';
+import { BadgeCheck, Baby, Briefcase, Cake, ChevronDown, ChevronUp, Eye, GitBranch, GripVertical, HeartHandshake, Mail, MapPin, Pencil, Phone, Route, Sparkles, Trash2, UserPlus, Users, X, XCircle } from 'lucide-react';
 import {
   formatBirthdayNoYear,
   formatDateDisplay,
@@ -278,6 +278,11 @@ export default function PersonDetail({
         {person.dob && (
           <div className="detail-field">
             <Cake size={14} /> {showAges ? formatDateDisplay(person.dob) : formatBirthdayNoYear(person.dob)}
+            {daysUntilBirthday != null && (
+              <span className="detail-field-muted">
+                · {daysUntilBirthday === 0 ? 'today!' : `in ${daysUntilBirthday} day${daysUntilBirthday === 1 ? '' : 's'}`}
+              </span>
+            )}
           </div>
         )}
         {!person.isAlive && person.dod && <div className="detail-field">🕊️ {formatDateDisplay(person.dod)}</div>}
@@ -313,12 +318,6 @@ export default function PersonDetail({
         )}
         {person.phone && <div className="detail-field"><Phone size={14} /> {person.phone}</div>}
         {person.email && <div className="detail-field"><Mail size={14} /> {person.email}</div>}
-        {daysUntilBirthday != null && (
-          <div className="detail-field">
-            <PartyPopper size={14} />{' '}
-            {daysUntilBirthday === 0 ? 'Birthday is today!' : `Birthday in ${daysUntilBirthday} day${daysUntilBirthday === 1 ? '' : 's'}`}
-          </div>
-        )}
       </div>
 
       {hasStats && (

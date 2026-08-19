@@ -121,16 +121,25 @@ export default function StatsPanel({ persons, isOpen, onClose, onSelect }) {
       .filter((entry) => entry.days != null)
       .sort((a, b) => a.days - b.days)
       .slice(0, 10);
+    const byWork = new Map();
+    for (const p of all) {
+      const work = p.work?.trim();
+      if (!work) continue;
+      if (!byWork.has(work)) byWork.set(work, []);
+      byWork.get(work).push(p);
+    }
     return {
       total: all,
       mapped: all.filter((p) => p.locationLat != null && p.locationLng != null),
       deceased: all.filter((p) => !p.isAlive),
       verified: all.filter((p) => p.verifiedEmail),
+      photo: all.filter((p) => p.photo),
       males: all.filter((p) => p.gender === 'male'),
       females: all.filter((p) => p.gender === 'female'),
       other: all.filter((p) => p.gender !== 'male' && p.gender !== 'female'),
       couples,
       generations,
+      byWork,
       upcomingBirthdays,
     };
   }, [persons]);
@@ -161,6 +170,8 @@ export default function StatsPanel({ persons, isOpen, onClose, onSelect }) {
     { key: 'mapped', value: stats.mapped, label: 'On the Map' },
     { key: 'deceased', value: stats.deceased, label: 'Deceased' },
     { key: 'verified', value: stats.verifiedProfiles, label: 'Verified profiles' },
+    { key: 'photo', value: stats.withPhoto, label: 'With a photo' },
+    { key: 'profession', value: stats.peopleWithWork, label: 'With a profession' },
   ];
 
   const toggle = (key) => setOpenKey((prev) => (prev === key ? null : key));
@@ -200,7 +211,20 @@ export default function StatsPanel({ persons, isOpen, onClose, onSelect }) {
         </div>
       );
     }
-    const titles = { total: 'All members', mapped: 'On the Map', deceased: 'Deceased', verified: 'Verified profiles', males: 'Male', females: 'Female', other: 'Other' };
+    if (openKey === 'profession') {
+      return (
+        <div className="stats-panel-names">
+          <h3>By profession</h3>
+          {stats.workBreakdown.map(({ work, count }) => (
+            <div key={work} className="stats-panel-gen-group">
+              <span className="stats-panel-gen-title">{work} <span className="stats-panel-count">{count}</span></span>
+              <NameList people={lists.byWork.get(work) || []} />
+            </div>
+          ))}
+        </div>
+      );
+    }
+    const titles = { total: 'All members', mapped: 'On the Map', deceased: 'Deceased', verified: 'Verified profiles', photo: 'With a photo', males: 'Male', females: 'Female', other: 'Other' };
     return (
       <div className="stats-panel-names">
         <h3>{titles[openKey]}</h3>
@@ -227,14 +251,57 @@ export default function StatsPanel({ persons, isOpen, onClose, onSelect }) {
           ))}
         </div>
 
-        <div className="stats-panel-row">
-          <span className="stats-panel-row-label">By gender</span>
-          <span>
-            <button type="button" className="stats-panel-gender" onClick={() => toggle('males')}>{stats.males} male</button>
-            {', '}
-            <button type="button" className="stats-panel-gender" onClick={() => toggle('females')}>{stats.females} female</button>
-            {stats.other ? (<>{', '}<button type="button" className="stats-panel-gender" onClick={() => toggle('other')}>{stats.other} other</button></>) : ''}
-          </span>
+        <div className="stats-panel-section">
+          <h3>By gender</h3>
+          <div
+            className="stats-panel-gender-bar"
+            role="img"
+            aria-label={`${stats.males} male, ${stats.females} female${stats.other ? `, ${stats.other} other` : ''}`}
+          >
+            {stats.males > 0 && (
+              <button
+                type="button"
+                className="stats-panel-gender-segment stats-panel-gender-male"
+                style={{ flexGrow: stats.males }}
+                onClick={() => toggle('males')}
+              >
+                {stats.males / stats.totalMembers >= 0.15 ? stats.males : ''}
+              </button>
+            )}
+            {stats.females > 0 && (
+              <button
+                type="button"
+                className="stats-panel-gender-segment stats-panel-gender-female"
+                style={{ flexGrow: stats.females }}
+                onClick={() => toggle('females')}
+              >
+                {stats.females / stats.totalMembers >= 0.15 ? stats.females : ''}
+              </button>
+            )}
+            {stats.other > 0 && (
+              <button
+                type="button"
+                className="stats-panel-gender-segment stats-panel-gender-other"
+                style={{ flexGrow: stats.other }}
+                onClick={() => toggle('other')}
+              >
+                {stats.other / stats.totalMembers >= 0.15 ? stats.other : ''}
+              </button>
+            )}
+          </div>
+          <div className="stats-panel-gender-legend">
+            <button type="button" className="stats-panel-legend-item" onClick={() => toggle('males')}>
+              <span className="stats-panel-legend-dot stats-panel-gender-male" /> Male <span className="stats-panel-count">{stats.males}</span>
+            </button>
+            <button type="button" className="stats-panel-legend-item" onClick={() => toggle('females')}>
+              <span className="stats-panel-legend-dot stats-panel-gender-female" /> Female <span className="stats-panel-count">{stats.females}</span>
+            </button>
+            {stats.other > 0 && (
+              <button type="button" className="stats-panel-legend-item" onClick={() => toggle('other')}>
+                <span className="stats-panel-legend-dot stats-panel-gender-other" /> Other <span className="stats-panel-count">{stats.other}</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {renderDetail()}
