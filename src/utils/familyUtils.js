@@ -240,7 +240,16 @@ export function getForestRoots(persons, priorityId) {
     if (spouse && spouse.parentIds.length === 0 && !isMarriedIn(persons, spouse)) {
       // Genuine top couple (neither has known parents) — pick one canonical
       // representative so they don't each spawn their own duplicate tree.
-      const child = person.childrenIds.map((cid) => getPerson(persons, cid)).find(Boolean);
+      // Checks BOTH spouses' own childrenIds (not just `person`'s) — some
+      // older records only list a child under one parent (an asymmetric
+      // back-link Data Health Check can flag separately), and reading only
+      // `person.childrenIds` made the canonical choice depend on which of
+      // the two spouses this loop happened to visit first, which in turn
+      // depended on Firestore's own non-guaranteed field order — the exact
+      // instability that made a bridged-in family's "Generation" number in
+      // Family Statistics change on every reload for the same data.
+      const childIds = [...new Set([...person.childrenIds, ...spouse.childrenIds])];
+      const child = childIds.map((cid) => getPerson(persons, cid)).find(Boolean);
       const canonical = child && child.parentIds[0] === spouse.id ? spouse.id : id;
       skip.add(canonical === id ? spouse.id : id);
       candidates.push(canonical);
@@ -248,9 +257,18 @@ export function getForestRoots(persons, priorityId) {
       candidates.push(id);
     }
   }
-  const roots = [...new Set(candidates)].sort(
-    (a, b) => countDescendants(persons, b) - countDescendants(persons, a)
-  );
+  // Descendant count is the primary sort, but two disconnected branches of
+  // similar size tie often enough that the tie-break matters — and Firestore
+  // doesn't guarantee `persons`' own field order round-trips identically
+  // between reads (same caveat as SIGNATURE_FIELDS below), so falling through
+  // to insertion order made which branch renders "on top" (and therefore
+  // which "Generation" number a bridged-in family gets in Family Statistics)
+  // silently different from one page load to the next for the exact same
+  // data. Breaking ties by id keeps it deterministic instead.
+  const roots = [...new Set(candidates)].sort((a, b) => {
+    const byDescendants = countDescendants(persons, b) - countDescendants(persons, a);
+    return byDescendants !== 0 ? byDescendants : a.localeCompare(b);
+  });
   const priorityRoot = priorityId ? primaryLineageRoot(persons, priorityId) : null;
   const priorityIndex = priorityRoot ? roots.indexOf(priorityRoot) : -1;
   if (priorityIndex > 0) {
