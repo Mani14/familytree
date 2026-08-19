@@ -34,6 +34,12 @@ Live at:
   and [`worker/`](worker).
 - **Find Connection** — pick any two people and watch an animated path trace
   the blood/marriage connection between them, narrating each stop.
+- **Birthday Wishes** — anyone signed in can leave a text wish on a person's
+  profile; visible to everyone, deletable by the author or an admin.
+- **Daily birthday-alert emails** — a Cloudflare Worker Cron Trigger emails
+  the birthday person directly (if they've linked their own account) and,
+  if an admin has turned it on, every signed-in family member on someone's
+  birthday. See [Architecture](#architecture) below.
 - **Family Map** — everyone's pinned location (current or native place) on a
   real map.
 - **Data Health Check** (admin) — flags dangling references, asymmetric
@@ -57,6 +63,12 @@ For the full up-to-date feature list as shown to users, see the in-app
   [Deployment](#deployment)).
 - **AI-assisted question parsing**: a Cloudflare Worker (free tier) calling
   Groq's free-tier LLM API — see [Architecture](#architecture).
+- **Birthday-alert email job**: the same Cloudflare Worker also runs a daily
+  Cron Trigger, reading Firestore directly (via a narrowly-scoped, read-only
+  Google service account — Workers can't use the Node-only `firebase-admin`
+  SDK, so this hand-rolls the same from-scratch JWT approach already used
+  for verifying Firebase ID tokens) and sending mail via **Brevo**'s free
+  tier — see [Architecture](#architecture).
 - **Backups**: a Google Apps Script, running on a daily schedule under your
   own Google account, saving JSON snapshots to your own Drive — see
   [`backup/`](backup/README.md).
@@ -74,19 +86,31 @@ here needs a paid plan anywhere.
 │    engine (LOCAL,    │◄──────►│  Firestore                │
 │    deterministic)    │        │  families/main (the tree) │
 │  - all UI/state       │        │  families/relationshipOverrides│
-└──────────┬───────────┘        │  users/{uid}, settings/*   │
-           │                    └──────────────────────────┘
-           │ question TEXT ONLY, never family data
-           ▼
+└──────────┬───────────┘        │  birthdayWishes, users/{uid}, settings/*│
+           │                    └───────────────▲──────────┘
+           │ question TEXT ONLY,                 │ read-only, service-account
+           │ never family data                   │ JWT (no signed-in user)
+           ▼                                      │
 ┌──────────────────────┐        ┌──────────────────────────┐
 │  Cloudflare Worker    │◄──────►│  Groq API (free tier)     │
 │  (worker/src/index.js)│        │  LLM: intent extraction   │
-│  - verifies Firebase  │        │  only, e.g. {type:        │
-│    ID token           │        │  "relation-between", ...} │
-│  - holds Groq API key │        └──────────────────────────┘
-│    (Cloudflare secret)│
-└──────────────────────┘
+│  - fetch(): verifies  │        │  only, e.g. {type:        │
+│    Firebase ID token, │        │  "relation-between", ...} │
+│    proxies to Groq    │        └──────────────────────────┘
+│  - scheduled(): daily │        ┌──────────────────────────┐
+│    cron, birthday job │◄──────►│  Brevo API (free tier)    │
+└──────────────────────┘        │  transactional email      │
+                                 └──────────────────────────┘
 ```
+
+The Worker does two unrelated jobs behind one `export default`: `fetch()` handles
+the Ask panel (verifies the caller's Firebase ID token, proxies to Groq — no
+Firestore access at all), and `scheduled()` handles the daily birthday email —
+the opposite shape, no signed-in user to check, but real Firestore reads via a
+dedicated, narrowly-scoped (read-only) service account, since Workers can't use
+the Node-only `firebase-admin` SDK. See `worker/src/firestore.js`'s comment for
+how that JWT is hand-rolled with the `jose` package already used for ID-token
+verification.
 
 The important design decision: **the AI never answers anything and never
 sees family data.** It only ever converts a free-form question into a small
@@ -137,14 +161,23 @@ Other documents:
   order — not by which two people), so a fix generalizes to every pair
   sharing that same shape. See `getRelationshipSignature` in
   `familyUtils.js`.
-- `users/{uid}` — `{ meId, rootId }`, which person this signed-in account is
-  linked to as "you", and their own personal default tree root. Never shared
-  with anyone else.
+- `users/{uid}` — `{ meId, rootId, email }`: which person this signed-in
+  account is linked to as "you", their own personal default tree root, and
+  their own login email (cached here since the birthday-alert Worker cron
+  can only read Firestore, not Firebase Auth directly). Never shared with
+  anyone else.
+- `birthdayWishes/{wishId}` — one document per wish left on a person's
+  profile: `{ personId, message, fromUid, fromName, createdAt }`. A real
+  collection, not a field on `families/main`, since wishes accumulate
+  indefinitely and each one needs its own delete permission (author or
+  admin) — a rule over one big array field can't express that.
 - `settings/admins`, `settings/app` — admin list and app-wide feature toggles
-  (see Admin Settings in the app).
+  (see Admin Settings in the app), including the birthday-alert email job's
+  master on/off switch.
 
 Firestore security rules ([`firestore.rules`](firestore.rules)): any
-signed-in user can read/write the shared tree and relationship overrides;
+signed-in user can read/write the shared tree, relationship overrides, and
+birthday wishes (create/delete only the ones you authored, plus admins);
 `users/{uid}` is private to that account (plus admins); `settings/*` is
 admin-write, signed-in-read.
 
@@ -181,7 +214,7 @@ Two independent, automatic pipelines, both triggered on every push to
 Nothing needs to be run manually for a normal frontend change — push to
 `master` and both deployments happen on their own.
 
-### The Cloudflare Worker (Ask panel's AI backend) is separate
+### The Cloudflare Worker (Ask panel + birthday emails) is separate
 
 The Worker is **not** part of either CI pipeline above — it has its own,
 manual deploy, from inside `worker/`:
@@ -189,14 +222,25 @@ manual deploy, from inside `worker/`:
 ```bash
 cd worker
 npm install
-npx wrangler login              # one-time, opens a browser
-npx wrangler secret put GROQ_API_KEY   # one-time, or whenever the key rotates
+npx wrangler login                      # one-time, opens a browser
+npx wrangler secret put GROQ_API_KEY    # Ask panel's Groq access
+npx wrangler secret put BREVO_API_KEY   # birthday emails, sent via Brevo
+npx wrangler secret put GCP_SERVICE_ACCOUNT_JSON < path\to\key.json  # see below
 npx wrangler deploy
 ```
 
+`GCP_SERVICE_ACCOUNT_JSON` is the full key file (piped in whole, not typed —
+preserves the private key's real newlines) of a **dedicated, read-only**
+Google service account (`roles/datastore.viewer` only, granted in Google
+Cloud Console under the same `family-tree-3b760` project) — deliberately
+*not* the full-access Firebase Admin key used elsewhere, since this one only
+ever needs to read Firestore on a schedule with nobody signed in. The daily
+schedule itself lives in `worker/wrangler.toml`'s `[triggers]` block (UTC —
+recompute by hand if the target local time changes).
+
 If you ever change `worker/src/index.js` (e.g. the system prompt, the model,
-a new question type), you need to re-run `npx wrangler deploy` yourself —
-pushing to `master` does not redeploy it.
+a new question type, the birthday job's logic), you need to re-run
+`npx wrangler deploy` yourself — pushing to `master` does not redeploy it.
 
 ### Firestore rules
 
@@ -250,6 +294,10 @@ src/
   lib/firebase.js             — Firebase app/auth/Firestore initialization
   data/family.json             — seed data (used by "Reset Shared Tree to Seed")
 worker/                        — Cloudflare Worker: Ask panel's AI intent classifier
+                                  + daily birthday-alert email job
+  src/index.js                  — fetch() (Ask panel) and scheduled() (birthday job)
+  src/firestore.js              — hand-rolled service-account JWT + Firestore REST reads
+  src/email.js, emailTemplates.js — Brevo send + the decorated HTML email templates
 backup/                        — Google Apps Script: daily Firestore → Drive backup
 firestore.rules, firestore.indexes.json, firebase.json, .firebaserc
 ```

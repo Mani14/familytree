@@ -102,6 +102,51 @@ curl -s -X POST https://family-tree-ask-worker.manikandan-ks-14.workers.dev \
 # expect: {"error":"Sign-in required."}
 ```
 
+## Set up / test the daily birthday-alert email job
+
+One-time setup for a fresh environment (secrets are already live for this
+project — this is for reference or if they ever need recreating):
+
+1. **Create a dedicated, READ-ONLY Google service account** — Google Cloud
+   Console → IAM & Admin → Service Accounts (project `family-tree-3b760`) →
+   Create → grant it **only** `Cloud Datastore Viewer` (`roles/datastore.viewer`)
+   → Keys tab → Add Key → JSON. Deliberately a separate, less-powerful
+   credential from the full-access Firebase Admin key used for direct
+   Firestore-Admin-SDK scripts elsewhere (see "Bulk-edit live Firestore data
+   directly" above) — this one only ever needs to read, on a schedule, with
+   nobody signed in.
+2. Upload it and the email API key as Worker secrets (see `worker/wrangler.toml`'s
+   own comments for exactly why each is piped rather than typed):
+   ```bash
+   cd worker
+   wrangler secret put GCP_SERVICE_ACCOUNT_JSON < path\to\downloaded-key.json
+   wrangler secret put BREVO_API_KEY
+   ```
+3. In Brevo (not a domain-verification-required provider — see CLAUDE.md's
+   gotcha on why Resend was tried first and rejected), verify a single
+   sender **email address** (Senders, Domains & Dedicated IPs → Senders →
+   Add Sender) — no domain ownership needed. Update `FROM_EMAIL` in
+   `worker/src/email.js` if the verified address ever changes.
+4. `npx wrangler deploy` — also registers the cron schedule from
+   `wrangler.toml`'s `[triggers]` block.
+
+**Testing without waiting for the real cron time** (this is how every
+version of the birthday job was actually verified working this project,
+including catching Resend's recipient restriction before it shipped):
+```bash
+cd worker
+npx wrangler dev --remote --test-scheduled
+# in another terminal, once "Ready on http://127.0.0.1:PORT" appears:
+curl "http://127.0.0.1:PORT/__scheduled?cron=0+1+*+*+*"
+```
+`--remote` runs against the REAL deployed secrets/Firestore, not a local
+mock — so this is a genuine end-to-end test, not a simulation. Since nobody's
+birthday is "today" on most test runs, temporarily replace the body of
+`scheduled()` in `index.js` with a couple of direct `sendEmail(...)` calls
+to real test addresses to verify the email pipeline itself (subject/HTML
+render, delivery) — **always revert this test override before deploying for
+real**; never leave hardcoded test recipients in shipped code.
+
 ## Rotate the Groq API key
 
 1. Generate a new key at https://console.groq.com.
@@ -109,6 +154,22 @@ curl -s -X POST https://family-tree-ask-worker.manikandan-ks-14.workers.dev \
    (no `wrangler deploy` needed — secrets apply to the already-deployed
    Worker immediately).
 3. Revoke the old key in the Groq console.
+
+## Rotate the Brevo API key
+
+Do this any time a Brevo key has appeared in plaintext somewhere it
+shouldn't have (chat, a log, a screen share) — treat that as a mandatory
+rotation event, same as the Groq key rule above.
+
+1. Brevo dashboard → Settings → SMTP & API → **API keys & MCP** tab (not the
+   "SMTP" tab — that generates a different, SMTP-relay-only credential that
+   doesn't work with this project's REST API integration).
+2. Generate a new key, copy the **plain** key value (not the "MCP API key"
+   variant shown in the same dialog — that one is base64-wrapped JSON for
+   MCP tool integrations, a different consumer).
+3. `cd worker && printf '<new key>' | npx wrangler secret put BREVO_API_KEY`
+   (no `wrangler deploy` needed — secrets apply immediately).
+4. Delete the old key in the Brevo dashboard.
 
 ## Deploy Firestore rules
 

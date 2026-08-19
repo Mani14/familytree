@@ -143,6 +143,16 @@ classify locally + via the Worker, resolve the answer with real code.
   once-permanent free tier is now a 60-day trial only — checked live during
   this decision, not from memory, since exactly this kind of policy changes
   over time).
+- **The birthday-alert email job has NO per-account opt-in, on purpose.** A
+  `NotificationPreferences.jsx` panel with a personal "email me about
+  birthdays" toggle existed briefly and was deliberately deleted — once the
+  panel got admin-gated (so regular family members couldn't reach it
+  anyway), the user explicitly chose "broadcast to every signed-in account"
+  over "opt-in, but only the admin can actually opt anyone in." The only
+  control now is the single admin-only master switch in Admin Settings
+  (`settings/app.features.birthdayAlertEmails`, off by default). Don't
+  reintroduce a personal opt-in field without checking this was actually
+  wanted back — it was removed as dead weight, not lost by accident.
 - **A Grep-tool display quirk**: search results have occasionally rendered
   `//` (a real comment marker in the file) as a stray `\` in this
   environment. If a Grep result shows something like `\ Fallback #3:` where
