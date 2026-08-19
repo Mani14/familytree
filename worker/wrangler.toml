@@ -5,9 +5,10 @@ workers_dev = true
 preview_urls = false
 
 # Daily birthday-notification job (see src/index.js's `scheduled` export).
-# 1:00 AM UTC ≈ 6:30 AM IST — Cloudflare Cron Triggers are UTC-only.
+# 3:30 AM UTC = 9:00 AM IST — Cloudflare Cron Triggers are UTC-only, so this
+# has to be recomputed by hand if the target local time ever changes.
 [triggers]
-crons = ["0 1 * * *"]
+crons = ["30 3 * * *"]
 
 # GROQ_API_KEY is set via `wrangler secret put GROQ_API_KEY` — never stored in
 # this file or anywhere else in the repo.
@@ -20,5 +21,7 @@ crons = ["0 1 * * *"]
 # mangle otherwise). Used only by the scheduled birthday job to read Firestore
 # with no signed-in user present.
 #
-# RESEND_API_KEY: set via `wrangler secret put RESEND_API_KEY` — the
-# transactional email API the birthday job sends through.
+# BREVO_API_KEY: set via `wrangler secret put BREVO_API_KEY` — the
+# transactional email API the birthday job sends through (see email.js;
+# Resend was tried first but hard-rejects any recipient besides the account
+# owner without a verified domain — Brevo doesn't have that restriction).
