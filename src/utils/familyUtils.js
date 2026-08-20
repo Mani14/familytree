@@ -892,57 +892,73 @@ const ENGLISH_SIBLING_GENDER_PAIRS = {
 // English counterpart to resolveTamilTermChained — same reasoning: each
 // fallback recurses into the others (via cycle-protected `visiting`) so a
 // chain of any length resolves correctly, not just one hop of composability.
-function resolveEnglishTermChained(persons, personId, rootId, visiting) {
-  // See resolveTamilTermChained's matching guard — the fallback layers below
+// The actual chained computation, split out from the memoising/cycle-guarding
+// wrapper below so the wrapper stays the single place results are cached.
+function computeEnglishChained(persons, personId, rootId, visiting, memo) {
+  const primary = computePrimaryEnglishTerm(persons, personId, rootId);
+  if (primary) return primary;
+
+  const person = getPerson(persons, personId);
+  if (!person) return null;
+
+  if (person.spouseId && person.spouseId !== rootId) {
+    const spouseTerm = resolveEnglishTermChained(persons, person.spouseId, rootId, visiting, memo);
+    const mapped = spouseTerm && ENGLISH_SPOUSE_MIRROR[spouseTerm];
+    if (mapped) return mapped;
+  }
+
+  // Sibling inheritance — re-picks the inherited relation's gender-correct
+  // word for personId's OWN gender (see ENGLISH_SIBLING_GENDER_PAIRS),
+  // rather than copying a sibling's own clean term as-is regardless of
+  // whether it's still gender-correct for the person inheriting it.
+  for (const sibling of getSiblings(persons, person)) {
+    const siblingTerm = resolveEnglishTermChained(persons, sibling.id, rootId, visiting, memo);
+    const pair = siblingTerm && ENGLISH_SIBLING_GENDER_PAIRS[siblingTerm];
+    if (pair) return person.gender === 'male' ? pair.male : person.gender === 'female' ? pair.female : siblingTerm;
+  }
+
+  // Parent-category inheritance — a plain, direct-style word for each
+  // category rather than a nested description. A parent who is themselves
+  // only a chained "Cousin-in-law" (no blood path, e.g. Vinoth) still
+  // makes their own child a "Cousin-in-law" too — there's no side/removal
+  // data left at this depth to say anything more specific.
+  for (const parentId of person.parentIds || []) {
+    const parentTerm = resolveEnglishTermChained(persons, parentId, rootId, visiting, memo);
+    if (parentTerm === 'Uncle-in-law' || parentTerm === 'Aunt-in-law' || parentTerm === 'Cousin-in-law') {
+      return 'Cousin-in-law';
+    }
+  }
+  return null;
+}
+
+function resolveEnglishTermChained(persons, personId, rootId, visiting, memo) {
+  // See resolveTamilTermChained's matching guard — the fallback layers
   // (sibling-inheritance especially) don't independently know that personId
   // === rootId means "no real relationship to compute", so without this a
   // sibling's own valid term gets misattributed as your relationship to
   // yourself when viewing your own profile.
   if (personId === rootId) return null;
+  // Memoise per (personId) for this whole top-level call (rootId is fixed) so
+  // each node is resolved once instead of being re-explored through the
+  // exponentially-many spouse/sibling/parent fallback paths — a single distant
+  // lookup used to take 20+ seconds and could freeze the tab. The cycle-guard
+  // null below is deliberately NOT cached: it's specific to the current path,
+  // not the node's real answer.
+  if (memo.has(personId)) return memo.get(personId);
   if (visiting.has(personId)) return null;
   visiting.add(personId);
+  let result = null;
   try {
-    const primary = computePrimaryEnglishTerm(persons, personId, rootId);
-    if (primary) return primary;
-
-    const person = getPerson(persons, personId);
-    if (!person) return null;
-
-    if (person.spouseId && person.spouseId !== rootId) {
-      const spouseTerm = resolveEnglishTermChained(persons, person.spouseId, rootId, visiting);
-      const mapped = spouseTerm && ENGLISH_SPOUSE_MIRROR[spouseTerm];
-      if (mapped) return mapped;
-    }
-
-    // Sibling inheritance — re-picks the inherited relation's gender-correct
-    // word for personId's OWN gender (see ENGLISH_SIBLING_GENDER_PAIRS),
-    // rather than copying a sibling's own clean term as-is regardless of
-    // whether it's still gender-correct for the person inheriting it.
-    for (const sibling of getSiblings(persons, person)) {
-      const siblingTerm = resolveEnglishTermChained(persons, sibling.id, rootId, visiting);
-      const pair = siblingTerm && ENGLISH_SIBLING_GENDER_PAIRS[siblingTerm];
-      if (pair) return person.gender === 'male' ? pair.male : person.gender === 'female' ? pair.female : siblingTerm;
-    }
-
-    // Parent-category inheritance — a plain, direct-style word for each
-    // category rather than a nested description. A parent who is themselves
-    // only a chained "Cousin-in-law" (no blood path, e.g. Vinoth) still
-    // makes their own child a "Cousin-in-law" too — there's no side/removal
-    // data left at this depth to say anything more specific.
-    for (const parentId of person.parentIds || []) {
-      const parentTerm = resolveEnglishTermChained(persons, parentId, rootId, visiting);
-      if (parentTerm === 'Uncle-in-law' || parentTerm === 'Aunt-in-law' || parentTerm === 'Cousin-in-law') {
-        return 'Cousin-in-law';
-      }
-    }
-    return null;
+    result = computeEnglishChained(persons, personId, rootId, visiting, memo);
   } finally {
     visiting.delete(personId);
   }
+  memo.set(personId, result);
+  return result;
 }
 
 export function getRelationshipLabel(persons, personId, rootId) {
-  return resolveEnglishTermChained(persons, personId, rootId, new Set());
+  return resolveEnglishTermChained(persons, personId, rootId, new Set(), new Map());
 }
 
 // --- Tamil relationship terms ----------------------------------------------
@@ -1666,92 +1682,101 @@ const CROSS_COUSIN_WORDS = new Set(['மைத்துனன்/மச்சா
 // only way this set ever matters is genuinely circular data; it exists
 // purely to stop that from infinite-looping mutual spouses/siblings, not
 // because legitimate chains are expected to revisit anyone.
-function resolveTamilTermChained(persons, personId, rootId, overrides, visiting) {
+// The actual chained Tamil computation, split out from the memoising/cycle-
+// guarding wrapper below (see resolveEnglishTermChained for the same split).
+function computeTamilChained(persons, personId, rootId, overrides, visiting, memo) {
+  const primary = computePrimaryTamilTerm(persons, personId, rootId, overrides);
+  if (primary) return primary;
+
+  const person = getPerson(persons, personId);
+  if (!person) return null;
+
+  // Fallback #1: personId's SPOUSE'S term (their own, or itself chained
+  // through fallback #2/#3) is a known sibling/uncle-family word — mirror
+  // it. E.g. Suriya, married to Vinoth, who only has a term via HIS
+  // father Amirthalingam, who only has a term via HIS brother Shankar.
+  if (person.spouseId && person.spouseId !== rootId) {
+    const spouseTerm = resolveTamilTermChained(persons, person.spouseId, rootId, overrides, visiting, memo);
+    // A cross-cousin's own spouse (e.g. Suriya, or Sangeeta married to
+    // Murugesh) — no shared-parent birth order to reuse (married in), same
+    // as a direct cross-cousin's spouse, so this reuses that exact
+    // DOB-based rule instead of a fixed word mapping.
+    const spouse = getPerson(persons, person.spouseId);
+    if (spouseTerm === 'மைத்துனன்/மச்சான்' || spouseTerm === 'மைத்துனி/மச்சினிச்சி') {
+      const crossTerm = tamilCrossCousinSpouseTerm(persons, personId, rootId, spouse?.gender, person.gender);
+      if (crossTerm) return crossTerm;
+    }
+    const mapped = SPOUSE_MIRROR_MAP[spouseTerm];
+    if (mapped) return mapped;
+  }
+
+  // Fallback #2: personId is the SIBLING of someone who married into
+  // root's family — Tamil treats that whole sibling group uniformly
+  // rather than computing each one individually by birth order (unlike a
+  // REAL blood uncle/aunt's own siblings, who each get their own distinct
+  // Periyappa/Chithappa).
+  for (const sibling of getSiblings(persons, person)) {
+    const siblingTerm = resolveTamilTermChained(persons, sibling.id, rootId, overrides, visiting, memo);
+    if (!siblingTerm || !KNOWN_FAMILY_WORDS.has(siblingTerm)) continue;
+    const pair = SIBLING_TERM_GENDER_PAIRS[siblingTerm];
+    return person.gender === 'male' ? pair.male : person.gender === 'female' ? pair.female : siblingTerm;
+  }
+
+  // Fallback #3: personId's own PARENT is a Mama/Athai/Periyappa/
+  // Chithappa-type relative with no blood path of their own either (e.g.
+  // Vinoth, whose father Amirthalingam only has a term via HIS brother
+  // Shankar). No common ancestor exists to compute a real side/order from,
+  // but the parent's own term CATEGORY already answers the only question
+  // that matters: a cross-side parent (Mama/Athai/Thai Mama — always
+  // married-in or opposite-gender-sibling relatives) makes their child a
+  // cross-cousin (Machaan/Machinichi) by the same convention a direct
+  // cross-uncle's child already follows; a same-side parent (Periyappa/
+  // Chithappa/Periyamma/Chithi) makes their child sibling-treated, though
+  // without birth-order data to pick Anna vs Thambi, this falls back to
+  // the plain சகோதரன்/சகோதரி word the direct sibling branch itself uses
+  // when order can't be determined either.
+  for (const parentId of person.parentIds) {
+    const parentTerm = resolveTamilTermChained(persons, parentId, rootId, overrides, visiting, memo);
+    if (CROSS_UNCLE_AUNT_WORDS.has(parentTerm)) {
+      return person.gender === 'male' ? 'மைத்துனன்/மச்சான்'
+        : person.gender === 'female' ? 'மைத்துனி/மச்சினிச்சி'
+        : 'மச்சான்/மச்சினிச்சி';
+    }
+    if (SAME_SIDE_UNCLE_AUNT_WORDS.has(parentTerm)) {
+      return person.gender === 'male' ? 'சகோதரன்' : person.gender === 'female' ? 'சகோதரி' : 'உடன்பிறப்பு';
+    }
+    if (CROSS_COUSIN_WORDS.has(parentTerm)) {
+      return person.gender === 'male' ? 'மருமகன்' : person.gender === 'female' ? 'மருமகள்' : 'மருமகன்/மருமகள்';
+    }
+  }
+  return null;
+}
+
+function resolveTamilTermChained(persons, personId, rootId, overrides, visiting, memo) {
   // A person's relationship to themselves is never a real thing to compute —
   // computePrimaryTamilTerm already returns null for this below, but the
-  // fallback layers don't independently know that: fallback #2, for
-  // instance, walks personId's OWN siblings and returns THEIR (perfectly
-  // valid) term relative to root — which, when personId === rootId, means
-  // returning your own sibling's term as if it were your relationship to
-  // yourself (e.g. viewing your own profile showing you tagged as your
-  // sister's term, "Sister (to you)"). Short-circuiting here, before any
-  // fallback runs, is the only place that's true for every fallback at once.
+  // fallback layers don't independently know that (fallback #2 would return
+  // a sibling's own valid term as if it were your relationship to yourself),
+  // so short-circuit here before any fallback runs.
   if (personId === rootId) return null;
+  // Memoised per node for this top-level call (see resolveEnglishTermChained)
+  // — turns the exponential spouse/sibling/parent fallback fan-out into one
+  // resolution per person. The cycle-guard null is deliberately not cached.
+  if (memo.has(personId)) return memo.get(personId);
   if (visiting.has(personId)) return null;
   visiting.add(personId);
+  let result = null;
   try {
-    const primary = computePrimaryTamilTerm(persons, personId, rootId, overrides);
-    if (primary) return primary;
-
-    const person = getPerson(persons, personId);
-    if (!person) return null;
-
-    // Fallback #1: personId's SPOUSE'S term (their own, or itself chained
-    // through fallback #2/#3) is a known sibling/uncle-family word — mirror
-    // it. E.g. Suriya, married to Vinoth, who only has a term via HIS
-    // father Amirthalingam, who only has a term via HIS brother Shankar.
-    if (person.spouseId && person.spouseId !== rootId) {
-      const spouseTerm = resolveTamilTermChained(persons, person.spouseId, rootId, overrides, visiting);
-      // A cross-cousin's own spouse (e.g. Suriya, or Sangeeta married to
-      // Murugesh) — no shared-parent birth order to reuse (married in), same
-      // as a direct cross-cousin's spouse, so this reuses that exact
-      // DOB-based rule instead of a fixed word mapping.
-      const spouse = getPerson(persons, person.spouseId);
-      if (spouseTerm === 'மைத்துனன்/மச்சான்' || spouseTerm === 'மைத்துனி/மச்சினிச்சி') {
-        const crossTerm = tamilCrossCousinSpouseTerm(persons, personId, rootId, spouse?.gender, person.gender);
-        if (crossTerm) return crossTerm;
-      }
-      const mapped = SPOUSE_MIRROR_MAP[spouseTerm];
-      if (mapped) return mapped;
-    }
-
-    // Fallback #2: personId is the SIBLING of someone who married into
-    // root's family — Tamil treats that whole sibling group uniformly
-    // rather than computing each one individually by birth order (unlike a
-    // REAL blood uncle/aunt's own siblings, who each get their own distinct
-    // Periyappa/Chithappa).
-    for (const sibling of getSiblings(persons, person)) {
-      const siblingTerm = resolveTamilTermChained(persons, sibling.id, rootId, overrides, visiting);
-      if (!siblingTerm || !KNOWN_FAMILY_WORDS.has(siblingTerm)) continue;
-      const pair = SIBLING_TERM_GENDER_PAIRS[siblingTerm];
-      return person.gender === 'male' ? pair.male : person.gender === 'female' ? pair.female : siblingTerm;
-    }
-
-    // Fallback #3: personId's own PARENT is a Mama/Athai/Periyappa/
-    // Chithappa-type relative with no blood path of their own either (e.g.
-    // Vinoth, whose father Amirthalingam only has a term via HIS brother
-    // Shankar). No common ancestor exists to compute a real side/order from,
-    // but the parent's own term CATEGORY already answers the only question
-    // that matters: a cross-side parent (Mama/Athai/Thai Mama — always
-    // married-in or opposite-gender-sibling relatives) makes their child a
-    // cross-cousin (Machaan/Machinichi) by the same convention a direct
-    // cross-uncle's child already follows; a same-side parent (Periyappa/
-    // Chithappa/Periyamma/Chithi) makes their child sibling-treated, though
-    // without birth-order data to pick Anna vs Thambi, this falls back to
-    // the plain சகோதரன்/சகோதரி word the direct sibling branch itself uses
-    // when order can't be determined either.
-    for (const parentId of person.parentIds) {
-      const parentTerm = resolveTamilTermChained(persons, parentId, rootId, overrides, visiting);
-      if (CROSS_UNCLE_AUNT_WORDS.has(parentTerm)) {
-        return person.gender === 'male' ? 'மைத்துனன்/மச்சான்'
-          : person.gender === 'female' ? 'மைத்துனி/மச்சினிச்சி'
-          : 'மச்சான்/மச்சினிச்சி';
-      }
-      if (SAME_SIDE_UNCLE_AUNT_WORDS.has(parentTerm)) {
-        return person.gender === 'male' ? 'சகோதரன்' : person.gender === 'female' ? 'சகோதரி' : 'உடன்பிறப்பு';
-      }
-      if (CROSS_COUSIN_WORDS.has(parentTerm)) {
-        return person.gender === 'male' ? 'மருமகன்' : person.gender === 'female' ? 'மருமகள்' : 'மருமகன்/மருமகள்';
-      }
-    }
-    return null;
+    result = computeTamilChained(persons, personId, rootId, overrides, visiting, memo);
   } finally {
     visiting.delete(personId);
   }
+  memo.set(personId, result);
+  return result;
 }
 
 export function getRelationshipLabelTamil(persons, personId, rootId, overrides = []) {
-  return resolveTamilTermChained(persons, personId, rootId, overrides, new Set());
+  return resolveTamilTermChained(persons, personId, rootId, overrides, new Set(), new Map());
 }
 
 // --- Custom relationship-term rules -----------------------------------------

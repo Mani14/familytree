@@ -63,6 +63,10 @@ const RELATION_GROUPS = {
 // Word-boundary match, not substring — a substring check for "father" would
 // also light up on "Grandfather"/"Great-Grandfather", which is wrong.
 function labelMatchesRelation(label, relationWord) {
+  // "brother" must not match "Brother-in-law" (the hyphen is a \b boundary) —
+  // only match an in-law label when the question itself asked for an in-law.
+  const wantsInLaw = /in[-\s]?law/i.test(relationWord);
+  if (/in[-\s]?law/i.test(label) && !wantsInLaw) return false;
   const singular = singularize(relationWord);
   if (!singular) return false;
   const words = RELATION_GROUPS[singular] || [singular];
@@ -81,6 +85,209 @@ function labelMatchesRelation(label, relationWord) {
 export function substituteSelfReferences(text, selfName) {
   if (!selfName) return text;
   return text.replace(/\bmy\b/gi, `${selfName}'s`).replace(/\bme\b/gi, selfName);
+}
+
+// --- Attribute / list / count queries -------------------------------------
+// Answers "who <matches a recorded field>" and "how many" questions (jobs,
+// places, gender, living/deceased, birth year, name). Like every other answer
+// in this file it's computed 100% locally from the persons map — the AI (or the
+// local patterns below) only ever CLASSIFY the question into a {field, value,
+// aggregate} shape; no person's data is ever sent anywhere. Phone/email are
+// deliberately NOT searchable fields, so contact details never enter any prompt.
+const ATTRIBUTE_FIELDS = new Set(['work', 'location', 'gender', 'status', 'birthYear', 'name', 'any', 'all']);
+
+// Lenient text match: a plain substring hit, or every (roughly de-pluralised)
+// query word appearing in the stored value — so "software engineers" still
+// matches a stored "Software Engineer".
+function textFieldMatch(stored, value) {
+  const s = (stored || '').toLowerCase();
+  const v = (value || '').trim().toLowerCase();
+  if (!s || !v) return false;
+  if (s.includes(v)) return true;
+  const words = v.split(/\s+/).map((w) => w.replace(/s$/i, '')).filter(Boolean);
+  return words.length > 0 && words.every((w) => s.includes(w));
+}
+
+function personMatchesAttribute(person, field, value) {
+  const v = (value || '').trim().toLowerCase();
+  switch (field) {
+    case 'work': return textFieldMatch(person.work, value);
+    case 'location': return textFieldMatch(person.location, value);
+    case 'name': return textFieldMatch(getDisplayName(person), value);
+    // Free-text catch-all for vague questions ("who is a teacher") — searches
+    // the recorded free-text fields only; phone/email are never searched.
+    case 'any':
+      return textFieldMatch(person.work, value)
+        || textFieldMatch(person.location, value)
+        || textFieldMatch(person.notes, value)
+        || textFieldMatch(getDisplayName(person), value);
+    case 'gender':
+      if (/^(m|male|males|men|man|boys?|gents?|guys?)$/.test(v)) return person.gender === 'male';
+      if (/^(f|female|females|women|woman|girls?|ladies|lady)$/.test(v)) return person.gender === 'female';
+      return person.gender === v;
+    case 'status':
+      if (/aliv|living/.test(v)) return person.isAlive !== false;
+      if (/deceas|dead|passed|died|late|expired|gone/.test(v)) return person.isAlive === false;
+      return false;
+    case 'birthYear': return !!person.dob && person.dob.slice(0, 4) === v.replace(/\D/g, '');
+    default: return false;
+  }
+}
+
+// One-line summary shown above the matched list (or standing alone for a count).
+function describeAttribute(field, value, count) {
+  const n = count === 1 ? '1 person' : `${count} people`;
+  const val = (value || '').trim();
+  const some = count > 0;
+  switch (field) {
+    case 'all': return `There ${count === 1 ? 'is' : 'are'} ${n} in the tree.`;
+    case 'work': return some ? `${n} recorded as "${val}":` : `No one is recorded working as "${val}".`;
+    case 'location': return some ? `${n} recorded in ${val}:` : `No one is recorded as being in "${val}".`;
+    case 'name': return some ? `${n} matching "${val}":` : `No one matches the name "${val}".`;
+    case 'any': return some ? `${n} matching "${val}":` : `No one matches "${val}".`;
+    case 'birthYear': return some ? `${n} born in ${val}:` : `No one is recorded as born in ${val}.`;
+    case 'gender': {
+      const male = /^(m|male|males|men|man|boys?|gents?|guys?)$/.test(val.toLowerCase());
+      const label = male ? 'male' : 'female';
+      return some ? `${n} recorded as ${label}:` : `No one is recorded as ${label}.`;
+    }
+    case 'status': {
+      const alive = /aliv|living/.test(val.toLowerCase());
+      return some ? `${n} ${alive ? 'currently living' : 'no longer with us'}:` : `No one is recorded as ${alive ? 'living' : 'deceased'}.`;
+    }
+    default: return some ? `${n}:` : 'No matches.';
+  }
+}
+
+const cleanAttrValue = (s) => (s || '').trim().replace(/^(?:an?|the|all)\s+/i, '').replace(/[?.!,]+$/, '').trim();
+
+// --- Add-a-person commands -------------------------------------------------
+// Turns "add <name> as <relation> of <existing person>" (and a few phrasings
+// of it) into an {type:'add-person', action, gender, name, target} intent. This
+// is the ONE query type that WRITES, so unlike every question above it is
+// detected strictly and ENTIRELY locally — never handed to the AI Worker
+// (see parseQueryAI) — so an "add" command can't be silently misrouted into,
+// say, a relation-list lookup by an older/mis-guessing model. The relation
+// word both picks which existing mutation runs (addChild/addSpouse/addParent/
+// addSibling) and, where the word is gendered, seeds the new person's gender;
+// generic words (child/parent/sibling/spouse) leave gender unset for the user
+// to fill in. The actual write only happens after an explicit on-screen
+// confirm (see AskPanel), never straight from parsing.
+const ADD_RELATIONS = {
+  son: { action: 'child', gender: 'male' },
+  daughter: { action: 'child', gender: 'female' },
+  child: { action: 'child', gender: null },
+  kid: { action: 'child', gender: null },
+  father: { action: 'parent', gender: 'male' },
+  dad: { action: 'parent', gender: 'male' },
+  mother: { action: 'parent', gender: 'female' },
+  mom: { action: 'parent', gender: 'female' },
+  mum: { action: 'parent', gender: 'female' },
+  parent: { action: 'parent', gender: null },
+  brother: { action: 'sibling', gender: 'male' },
+  sister: { action: 'sibling', gender: 'female' },
+  sibling: { action: 'sibling', gender: null },
+  husband: { action: 'spouse', gender: 'male' },
+  wife: { action: 'spouse', gender: 'female' },
+  spouse: { action: 'spouse', gender: null },
+  partner: { action: 'spouse', gender: null },
+};
+
+const stripNamey = (s) => (s || '').trim().replace(/^(?:an?|the)\s+/i, '').replace(/[?.!,]+$/, '').trim();
+
+function buildAddIntent(name, relationWord, target) {
+  const rel = ADD_RELATIONS[singularize((relationWord || '').trim())];
+  if (!rel) return null;
+  const cleanName = stripNamey(name);
+  const cleanTarget = stripNamey(target);
+  if (!cleanName || !cleanTarget) return null;
+  return { type: 'add-person', name: cleanName, relationWord: singularize(relationWord.trim()), target: cleanTarget, action: rel.action, gender: rel.gender };
+}
+
+// Only fires on an explicit leading add/create verb, so it never swallows a
+// QUESTION that merely contains a relation word ("who are Kumar's sons").
+export function parseAddCommand(raw) {
+  const text = (raw || '').trim().replace(/[‘’]/g, "'").replace(/[?!.]+$/, '').trim();
+  if (!/^(?:add|create|new|insert|register)\b/i.test(text)) return null;
+  const body = text.replace(/^(?:add|create|new|insert|register)\s+/i, '').trim();
+
+  // "<name> as <target>'s <relation>"  — "Ravi as Kumar's son"
+  let m = /^(.+?)\s+as\s+(.+?)'s\s+(.+)$/i.exec(body);
+  if (m) return buildAddIntent(m[1], m[3], m[2]);
+
+  // "<name> as (a|the)? <relation> (of|to|for) <target>"  — "Ravi as son of Kumar"
+  m = /^(.+?)\s+as\s+(?:an?\s+|the\s+)?(.+?)\s+(?:of|to|for)\s+(.+)$/i.exec(body);
+  if (m) return buildAddIntent(m[1], m[2], m[3]);
+
+  // "(a|the)? <relation> (named|called)? <name> (to|for|of|under) <target>"
+  //   — "a son named Ravi to Kumar" / "daughter Priya for Meena"
+  m = /^(?:an?\s+|the\s+)?(\w+)\s+(?:named\s+|called\s+)?(.+?)\s+(?:to|for|of|under)\s+(.+)$/i.exec(body);
+  if (m && ADD_RELATIONS[singularize(m[1])]) return buildAddIntent(m[2], m[1], m[3]);
+
+  // "<target>'s <relation> <name>"  — "Kumar's wife Latha"
+  m = /^(.+?)'s\s+(\w+)\s+(.+)$/i.exec(body);
+  if (m && ADD_RELATIONS[singularize(m[2])]) return buildAddIntent(m[3], m[2], m[1]);
+
+  return null;
+}
+
+// A clear ADD intent that's missing the name and/or the person to attach to
+// ("add a new person", "add someone", a bare "add") — so we can guide the user
+// to the full phrasing instead of dropping them into the generic help text.
+function looksLikeAddAttempt(raw) {
+  const text = (raw || '').trim();
+  return /^(?:add|create|new|insert|register)\b/i.test(text)
+    || /\badd\s+(?:a\s+)?(?:new\s+)?(?:person|member|someone|somebody|relative|people)\b/i.test(text);
+}
+
+// Best-effort LOCAL classifier for attribute/count questions — the AI Worker
+// understands far more phrasings; this is the offline/fallback path. Returns
+// null when nothing matches, so parseQuery falls through to 'unknown'.
+function parseAttributeQuery(text) {
+  const isCount = /^\s*how\s+many\b/i.test(text);
+
+  let m = /\b(?:works?|working|employed)\s+as\s+(?:an?\s+)?(.+)$/i.exec(text)
+    || /\b(?:job|profession|occupation)\s+(?:is|as)\s+(?:an?\s+)?(.+)$/i.exec(text);
+  if (m) return { type: 'attribute-query', field: 'work', value: cleanAttrValue(m[1]), aggregate: isCount };
+
+  // "works/working in/at/for/with <X>" is an employer/place, not a job title —
+  // search it across job/place/notes (field 'any') so "who works at Hyundai" or
+  // "working in IT" matches a recorded job of "Engineer - Hyundai".
+  m = /\b(?:work(?:s|ing)?|employed)\s+(?:at|for|with|in|by)\s+(.+)$/i.exec(text);
+  if (m) return { type: 'attribute-query', field: 'any', value: cleanAttrValue(m[1]), aggregate: isCount };
+
+  m = /\b(?:lives?|living|stays?|staying|resides?|based)\s+(?:in|at|near)\s+(.+)$/i.exec(text)
+    || /\b(?:is|are|come|comes|hail|hails)\s+from\s+(.+)$/i.exec(text)
+    || /\b(?:who(?:'s| is| are)?|anyone|people|everyone|members?)\s+(?:in|at|near|from)\s+(.+)$/i.exec(text);
+  if (m) return { type: 'attribute-query', field: 'location', value: cleanAttrValue(m[1]), aggregate: isCount };
+
+  m = /\bborn\s+(?:in\s+)?(\d{4})\b/i.exec(text);
+  if (m) return { type: 'attribute-query', field: 'birthYear', value: m[1], aggregate: isCount };
+
+  m = /\b(?:named|called)\s+(.+)$/i.exec(text);
+  if (m) return { type: 'attribute-query', field: 'name', value: cleanAttrValue(m[1]), aggregate: isCount };
+
+  const opener = /^(?:who\b|how\s+many\b|list\b|show\b|find\b|name\b|any\b|anyone\b|is\s+there\b)/i.test(text);
+  if (!opener) return null;
+
+  if (/\b(males?|men|man|boys?|gents?)\b/i.test(text)) return { type: 'attribute-query', field: 'gender', value: 'male', aggregate: isCount };
+  if (/\b(females?|women|woman|girls?|ladies|lady)\b/i.test(text)) return { type: 'attribute-query', field: 'gender', value: 'female', aggregate: isCount };
+  if (/\b(deceased|passed\s+away|no\s+longer|dead|late|expired)\b/i.test(text)) return { type: 'attribute-query', field: 'status', value: 'deceased', aggregate: isCount };
+  if (/\b(alive|living|still\s+with\s+us)\b/i.test(text)) return { type: 'attribute-query', field: 'status', value: 'alive', aggregate: isCount };
+
+  if (isCount && /\b(people|members|persons|relatives|everyone|in\s+(?:the|this)\s+(?:tree|family))\b/i.test(text)) {
+    return { type: 'attribute-query', field: 'all', value: '', aggregate: true };
+  }
+
+  // Last resort: "who is a <X>", "any <X>", "how many <X>", "list <X>" — treat X
+  // as a free-text keyword matched across job/place/notes/name, so "who is a
+  // teacher" or "any engineers" work without a fixed job/role list.
+  m = /^(?:who(?:'s| is| are| were)?|anyone|any|is\s+there|how\s+many|list|show(?:\s+me)?|find|name)\s+(?:the\s+)?(?:an?\s+)?(.+)$/i.exec(text);
+  if (m) {
+    const val = cleanAttrValue(m[1]);
+    if (val.length >= 3) return { type: 'attribute-query', field: 'any', value: val, aggregate: isCount };
+  }
+  return null;
 }
 
 // Recognizes a small, fixed set of question phrasings — checked in an order
@@ -118,6 +325,14 @@ export function parseQuery(raw) {
     return { type: 'birthday-next' };
   }
 
+  // An add/create command is the only WRITE intent — detected before every
+  // question pattern so "add X as son of Y" is never misread as a lookup.
+  const addCmd = parseAddCommand(text);
+  if (addCmd) return addCmd;
+  // A clear-but-incomplete add ("add a new person") gets its own guidance
+  // rather than falling through to the generic "didn't understand" help.
+  if (looksLikeAddAttempt(text)) return { type: 'add-incomplete' };
+
   let m = /^how\s+(?:is|are)\s+(.+?)\s+related\s+to\s+(.+)$/i.exec(text);
   if (m) return { type: 'relation-between', nameA: m[1], nameB: m[2] };
 
@@ -130,6 +345,11 @@ export function parseQuery(raw) {
   m = /^what\s+(?:is|are|was)\s+(.+?)\s+to\s+(.+)$/i.exec(text);
   if (m) return { type: 'relation-between', nameA: m[1], nameB: m[2] };
 
+  // "who is X married to" — a spouse lookup phrased as a question, resolved via
+  // the same spouse relation-list path as "who is X's wife/husband".
+  m = /^who\s+(?:is|are)\s+(.+?)\s+married\s+to$/i.exec(text);
+  if (m) return { type: 'relation-list', name: m[1], relationWord: 'spouse' };
+
   // Possessive form: "who are X's cousins" / "who is X's father" / "list X's
   // children" / "show X's siblings" — also matches the bare "X's cousins"
   // without a leading question word, for a quicker/terser query style.
@@ -141,6 +361,9 @@ export function parseQuery(raw) {
   // bare "<word> of <word>" pattern is too generic to safely guess at otherwise.
   m = /^(?:who\s+(?:is|are)|list|show(?:\s+me)?)\s+(?:the\s+)?(.+?)\s+of\s+(.+)$/i.exec(text);
   if (m) return { type: 'relation-list', name: m[2], relationWord: m[1] };
+
+  const attr = parseAttributeQuery(text);
+  if (attr) return attr;
 
   return { type: 'unknown' };
 }
@@ -188,6 +411,15 @@ async function callAskWorker(text) {
   }
   if (data?.type === 'meta') return { type: 'meta' };
   if (data?.type === 'birthday-next') return { type: 'birthday-next' };
+  if (data?.type === 'attribute-query' && typeof data.field === 'string') {
+    return { type: 'attribute-query', field: data.field, value: typeof data.value === 'string' ? data.value : '', aggregate: !!data.aggregate };
+  }
+  // Normalize a Worker-supplied add through the same builder the local parser
+  // uses, so action/gender are derived here (never trusted from the model) and
+  // an unrecognized relation word safely collapses to 'unknown'.
+  if (data?.type === 'add-person' && data.name && data.relationWord && data.target) {
+    return buildAddIntent(data.name, data.relationWord, data.target) || { type: 'unknown' };
+  }
   if (data?.type === 'unknown') return { type: 'unknown' };
   throw new Error('Unrecognized response shape from Worker.');
 }
@@ -195,8 +427,26 @@ async function callAskWorker(text) {
 export async function parseQueryAI(raw) {
   const text = (raw || '').trim();
   if (!text) return { type: 'empty' };
+  // Add/create commands WRITE data, so they're resolved strictly and locally
+  // and never sent to the Worker — an older/mis-guessing model must not be
+  // able to turn "add X as son of Y" into some other (read) intent.
+  const addCmd = parseAddCommand(text);
+  if (addCmd) return addCmd;
+  // An incomplete add is resolved locally too — never sent to the Worker, which
+  // would just classify it as a generic 'meta' question and lose the intent.
+  if (looksLikeAddAttempt(text)) return { type: 'add-incomplete' };
   try {
-    return await withDeadline(callAskWorker(text), AI_TIMEOUT_MS);
+    const aiResult = await withDeadline(callAskWorker(text), AI_TIMEOUT_MS);
+    // If the Worker didn't produce a concrete, actionable intent — it gave up
+    // ('unknown') or fell back to a generic 'meta' (which older deployed
+    // Workers, predating the attribute-query intent, do for any non-relationship
+    // question) — give the local patterns a second chance, and prefer them only
+    // when they DO resolve to something concrete.
+    if (aiResult?.type === 'unknown' || aiResult?.type === 'meta') {
+      const local = parseQuery(raw);
+      if (local.type !== 'unknown' && local.type !== 'meta' && local.type !== 'empty') return local;
+    }
+    return aiResult;
   } catch (err) {
     console.warn('parseQueryAI: falling back to local parser', err);
     return parseQuery(raw);
@@ -230,7 +480,12 @@ const HELP_MESSAGE =
 // relationship) — describes scope and what data actually exists, so someone
 // asking "what can you do" gets a real answer instead of a rejection.
 const META_MESSAGE =
-  "I can answer questions about this family tree: \"How is X related to Y?\" (their relationship, in Tamil and English, plus a button to replay it on the tree), \"Who are X's cousins/children/siblings/etc?\" (everyone matching that category), and \"Whose birthday is coming up next?\". I only know what's recorded in this tree — names, gender, birth/death dates, parents, children, and marriages. I don't know jobs, addresses, or anything not entered here, and I can't change any data.";
+  "I can answer questions about this family tree: \"How is X related to Y?\" (their relationship, in Tamil and English, plus a button to replay it on the tree), \"Who are X's cousins/children/siblings/etc?\", \"Whose birthday is coming up next?\", and questions about recorded details — jobs (\"who works as a teacher?\"), places (\"who lives in Chennai?\"), counts (\"how many people are in the tree?\"), or by gender, living/deceased, birth year, or name. I can also add someone new — e.g. \"add Ravi as son of Kumar\" or \"add a daughter named Priya to Meena\" — and I'll show a confirm button before saving. I only know what's recorded here — names, gender, birth/death dates, parents, children, marriages, jobs, and places.";
+
+// Shown when someone clearly wants to add a person but hasn't said who or how
+// they connect — points them at the full phrasing rather than the generic help.
+const ADD_HELP_MESSAGE =
+  "To add someone, tell me their name and how they connect to a person already in the tree — for example: \"add Ravi as son of Kumar\", \"add a daughter named Priya to Meena\", or \"add Latha as Kumar's wife\". I'll show a confirm button before anything is saved.";
 
 // A name slot pinned to one specific id (see resolveAnswer's `chosen` param)
 // skips findPersonMatches entirely — used when the caller already resolved an
@@ -258,6 +513,7 @@ function resolveNameSlot(persons, nameText, chosenId) {
 export function resolveAnswer(persons, parsed, chosen = {}) {
   if (!parsed || parsed.type === 'empty') return { kind: 'empty' };
   if (parsed.type === 'meta') return { kind: 'meta', message: META_MESSAGE };
+  if (parsed.type === 'add-incomplete') return { kind: 'meta', message: ADD_HELP_MESSAGE };
   if (parsed.type === 'unknown') return { kind: 'error', message: `I didn't understand that. ${HELP_MESSAGE}` };
 
   if (parsed.type === 'birthday-next') {
@@ -305,11 +561,65 @@ export function resolveAnswer(persons, parsed, chosen = {}) {
     if (matches.length > 1) return { kind: 'ambiguous', slot: 'name', term: parsed.name, candidates: matches };
 
     const person = matches[0];
+    // Spouse words map to the direct "Spouse" label (gender-neutral in the
+    // engine), not a word-match — otherwise "wife" misses the real spouse and
+    // wrongly matches compound labels like "Cousin's Wife".
+    const SPOUSE_GENDER = { husband: 'male', wife: 'female', spouse: null };
+    const relWord = singularize(parsed.relationWord);
+    if (relWord in SPOUSE_GENDER) {
+      const wantGender = SPOUSE_GENDER[relWord];
+      const spouses = Object.values(persons)
+        .filter((p) => !p.isPlaceholder && p.id !== person.id)
+        .map((p) => ({ person: p, label: getRelationshipLabel(persons, p.id, person.id) }))
+        .filter((r) => r.label === 'Spouse' && (!wantGender || r.person.gender === wantGender));
+      return { kind: 'list', person, relationWord: parsed.relationWord, relatives: spouses };
+    }
     const relatives = Object.values(persons)
       .filter((p) => !p.isPlaceholder && p.id !== person.id)
       .map((p) => ({ person: p, label: getRelationshipLabel(persons, p.id, person.id) }))
       .filter((r) => r.label && labelMatchesRelation(r.label, parsed.relationWord));
     return { kind: 'list', person, relationWord: parsed.relationWord, relatives };
+  }
+
+  if (parsed.type === 'add-person') {
+    // Resolve WHO the new person attaches to first — same name-matching and
+    // "did you mean…" disambiguation (slot 'target') every other query uses.
+    const matches = resolveNameSlot(persons, parsed.target, chosen.target);
+    if (!matches.length) return { kind: 'error', message: `I couldn't find anyone named "${parsed.target.trim()}" to attach the new person to.` };
+    if (matches.length > 1) return { kind: 'ambiguous', slot: 'target', term: parsed.target, candidates: matches };
+    const target = matches[0];
+
+    // These two are structurally impossible, so they're caught here (with a
+    // clear reason) rather than silently no-op'ing in the mutation later.
+    if (parsed.action === 'spouse' && target.spouseId) {
+      return { kind: 'error', message: `${getDisplayName(target)} already has a spouse recorded — remove the existing one first if this is a correction.` };
+    }
+    if (parsed.action === 'parent' && (target.parentIds?.length || 0) >= 2) {
+      return { kind: 'error', message: `${getDisplayName(target)} already has two parents recorded.` };
+    }
+
+    const parts = parsed.name.trim().split(/\s+/);
+    const firstName = parts[0];
+    const lastName = parts.slice(1).join(' '); // '' lets the mutation apply the surname convention
+    return {
+      kind: 'add-confirm',
+      target,
+      action: parsed.action,
+      relationWord: parsed.relationWord,
+      firstName,
+      lastName,
+      gender: parsed.gender || 'other',
+    };
+  }
+
+  if (parsed.type === 'attribute-query') {
+    const { field } = parsed;
+    if (!ATTRIBUTE_FIELDS.has(field)) return { kind: 'error', message: `I didn't understand that. ${HELP_MESSAGE}` };
+    const value = parsed.value || '';
+    let people = Object.values(persons).filter((p) => !p.isPlaceholder);
+    if (field !== 'all') people = people.filter((p) => personMatchesAttribute(p, field, value));
+    people.sort((a, b) => getDisplayName(a).localeCompare(getDisplayName(b)));
+    return { kind: 'people', field, value, aggregate: !!parsed.aggregate, people, summary: describeAttribute(field, value, people.length) };
   }
 
   return { kind: 'error', message: `I didn't understand that. ${HELP_MESSAGE}` };

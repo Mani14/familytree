@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowLeft, Check, Compass, GitBranch, Languages, Link2, LocateFixed, LogOut, Map, MessageCircleQuestion, Menu, PlayCircle, Redo2, Route, ShieldAlert, Sparkles, Undo2, X } from 'lucide-react';
+import { ArrowLeft, Check, Compass, GitBranch, Link2, LocateFixed, LogOut, Map, MessageCircleQuestion, Menu, PlayCircle, Redo2, Route, ShieldAlert, Sparkles, Undo2, X } from 'lucide-react';
 import { useFamily } from './hooks/useFamily';
 import { useAuth } from './hooks/useAuth';
 import { useAdmin } from './hooks/useAdmin';
@@ -396,6 +396,18 @@ export default function App() {
     }
     closeForm();
   }, [formState, persons, updatePerson, addChild, addSpouse, addParent, addSibling, addPerson, setRoot, handleSelect, closeForm, handleSetMe]);
+
+  // Dispatches an Ask-panel "add <name> as <relation> of <person>" confirmation
+  // to the matching existing mutation. Returns the new person's id (or a falsy
+  // value if the relationship slot was already filled), which the panel uses to
+  // show a "view their card" link or a "couldn't add" message.
+  const handleAskAddPerson = useCallback((action, targetId, partial) => {
+    if (action === 'child') return addChild(targetId, partial);
+    if (action === 'spouse') return addSpouse(targetId, partial);
+    if (action === 'parent') return addParent(targetId, partial);
+    if (action === 'sibling') return addSibling(targetId, partial);
+    return null;
+  }, [addChild, addSpouse, addParent, addSibling]);
 
   // Opens the add-relative form directly from a tree node's quick-add menu.
   // `parentGender` ('father'|'mother') comes from the dedicated placeholder boxes
@@ -845,15 +857,6 @@ export default function App() {
         <button
           type="button"
           className="icon-btn desktop-header-item"
-          onClick={() => setShowRelationshipRules(true)}
-          aria-label="Relationship term rules"
-          title="Manage custom Tamil relationship term corrections"
-        >
-          <Languages size={17} />
-        </button>
-        <button
-          type="button"
-          className="icon-btn desktop-header-item"
           onClick={() => setShowAskPanel(true)}
           aria-label="Ask about the family"
           title="Ask a plain-English question, e.g. 'How is X related to Y?'"
@@ -897,7 +900,6 @@ export default function App() {
           onOpenStats={() => setShowStatsPanel(true)}
           onOpenFeatures={() => setShowFeatureShowcase(true)}
           onOpenFamilyMap={() => setShowFamilyMap(true)}
-          onOpenRelationshipRules={() => setShowRelationshipRules(true)}
           onOpenAsk={() => setShowAskPanel(true)}
           onOpenAdmin={() => setShowAdminPanel(true)}
           isAdmin={isAdmin}
@@ -1114,7 +1116,7 @@ export default function App() {
               onClearHighlight={handleClearHighlight}
               onFindConnection={handleFindConnection}
               overrides={relationshipOverrides}
-              onEditRelationship={handleEditRelationship}
+              onEditRelationship={isAdmin ? handleEditRelationship : undefined}
             />
           )}
         </AnimatePresence>
@@ -1203,6 +1205,7 @@ export default function App() {
         onSelectPerson={handleLocatePerson}
         onShowConnection={runConnection}
         selfName={getPerson(persons, meId)?.firstName}
+        onAddPerson={handleAskAddPerson}
       />
 
       {/* Suspense fallback is never actually visible in practice — showFamilyMap only
@@ -1280,6 +1283,7 @@ export default function App() {
             updateSettings={updateAppSettings}
             onRequestReset={handleRequestReset}
             onOpenDataHealth={() => setShowDataHealth(true)}
+            onOpenRelationshipRules={() => setShowRelationshipRules(true)}
             onFillMissingSurnames={handleFillMissingSurnames}
             onOpenMarriedSurnames={() => setShowMarriedSurnames(true)}
             onOpenRecentActivity={() => setShowRecentActivity(true)}

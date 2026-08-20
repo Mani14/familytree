@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion, Reorder, useDragControls } from 'framer-motion';
-import { BadgeCheck, Baby, Briefcase, Cake, ChevronDown, ChevronUp, Clock, Eye, GitBranch, GripVertical, HeartHandshake, Mail, MapPin, Pencil, Phone, Route, Sparkles, Trash2, UserPlus, Users, X, XCircle } from 'lucide-react';
+import { BadgeCheck, Baby, Briefcase, Cake, ChevronDown, ChevronUp, Clock, Eye, GitBranch, GripVertical, HeartHandshake, HelpCircle, Mail, MapPin, Pencil, Phone, Route, Sparkles, Trash2, UserPlus, Users, X, XCircle } from 'lucide-react';
 import {
   formatBirthdayNoYear,
   formatDateDisplay,
@@ -17,6 +17,7 @@ import {
   getSiblings,
   getSpouse,
 } from '../utils/familyUtils';
+import RelationshipExplainer from './RelationshipExplainer';
 import '../styles/PersonDetail.css';
 
 // The tree is shared/multi-editor, so records carry a last-edited stamp (see
@@ -205,6 +206,7 @@ export default function PersonDetail({
   overrides = [],
   onEditRelationship,
 }) {
+  const [showWhy, setShowWhy] = useState(false);
   if (!person) return null;
 
   const spouse = getSpouse(persons, person);
@@ -275,6 +277,17 @@ export default function PersonDetail({
                   aria-label="Edit relationship term"
                 >
                   <Pencil size={10} />
+                </button>
+              )}
+              {anchorId && (
+                <button
+                  type="button"
+                  className="detail-relation-edit-btn"
+                  onClick={() => setShowWhy(true)}
+                  title="See how you're related, step by step"
+                  aria-label="Explain relationship"
+                >
+                  <HelpCircle size={11} />
                 </button>
               )}
             </span>
@@ -423,6 +436,16 @@ export default function PersonDetail({
         )}
         <button type="button" className="detail-delete" onClick={onDelete}><Trash2 size={14} /> Delete</button>
       </div>
+
+      <RelationshipExplainer
+        persons={persons}
+        fromId={anchorId}
+        toId={person.id}
+        anchorName={anchorId ? getFullName(persons[anchorId]) : null}
+        overrides={overrides}
+        isOpen={showWhy}
+        onClose={() => setShowWhy(false)}
+      />
     </motion.aside>
   );
 }

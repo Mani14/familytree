@@ -57,7 +57,7 @@ async function verifyFirebaseIdToken(token) {
 // src/utils/naturalQuery.js's resolveAnswer) — so it needs to know exactly
 // what the two real intents look like and treat everything else, including
 // questions ABOUT the tool itself, as out of scope for a relationship lookup.
-const SYSTEM_PROMPT = `You are the question-understanding layer for a family tree app. You do NOT answer questions yourself — you only classify what's being asked into one exact JSON shape, which a separate local system uses to compute the real answer from the actual family tree data (names, genders, birth dates, death dates, parent/child links, marriages — nothing else; no jobs, addresses, or other personal details are stored). Respond with ONLY a single JSON object, no other text, in exactly one of these shapes:
+const SYSTEM_PROMPT = `You are the question-understanding layer for a family tree app. You do NOT answer questions yourself — you only classify what's being asked into one exact JSON shape, which a separate local system uses to compute the real answer from the actual family tree data (names, genders, birth dates, death dates, parent/child links, marriages, each person's job/work, and where they live — nothing else). Respond with ONLY a single JSON object, no other text, in exactly one of these shapes:
 
 For "how is X related to Y" / "what is X to Y" / "relationship between X and Y" style questions, asking for the relationship between two specific named people:
 {"type": "relation-between", "nameA": "<name as written>", "nameB": "<name as written>"}
@@ -67,6 +67,14 @@ For "who are X's <relation>" / "list X's <relation>" / "<relation> of X" style q
 
 For a question asking whose birthday is coming up soon/next, or for a list of upcoming birthdays:
 {"type": "birthday-next"}
+
+For questions about a recorded DETAIL of people rather than a specific relationship — their job/work, where they live, their gender, whether they are living or deceased, the year they were born, or their name — OR a COUNT of such people ("how many ..."):
+{"type": "attribute-query", "field": "<one of: work, location, gender, status, birthYear, name, any, all>", "value": "<the value asked about, as written; the job, the place, \"male\" or \"female\", \"alive\" or \"deceased\", the 4-digit year, or the name; empty string when field is all>", "aggregate": <true if the question asks "how many" / a count, otherwise false>}
+Use field "all" with value "" only for a plain count of everyone (e.g. "how many people are in the tree"). Use field "any" when the question is about people matching a word that could be a job/place/description but you can't tell which (e.g. "who is a teacher", "any engineers") — put that word in value. For gender use value "male" or "female"; for living/deceased use value "alive" or "deceased". Never use any field other than the eight listed — there is no phone or email search.
+
+For a request to ADD or CREATE a NEW person into the tree and attach them to an existing person by a family relationship (e.g. "add Ravi as son of Kumar", "add a daughter named Priya to Meena", "create Kumar's wife Latha"):
+{"type": "add-person", "name": "<the NEW person's name, as written>", "relationWord": "<son|daughter|child|father|mother|parent|brother|sister|sibling|husband|wife|spouse>", "target": "<the EXISTING person's name they attach to, as written>"}
+Only use this for an explicit add/create request, never for a question.
 
 For a question ABOUT this tool itself — what it can do, how to use it, a greeting, or any other question that isn't asking about a specific relationship in the tree (e.g. "what can you do", "help", "hi", "what is this"):
 {"type": "meta"}
@@ -250,6 +258,28 @@ export default {
     }
     if (parsed?.type === 'birthday-next') {
       return json({ type: 'birthday-next' }, 200, origin);
+    }
+    // An explicit request to ADD/CREATE a new person and attach them to an
+    // existing one — e.g. "add Ravi as son of Kumar". The client derives the
+    // action/gender and only writes after an on-screen confirm; here we just
+    // pass the three raw strings through once their presence is validated.
+    if (
+      parsed?.type === 'add-person' &&
+      typeof parsed.name === 'string' &&
+      typeof parsed.relationWord === 'string' &&
+      typeof parsed.target === 'string'
+    ) {
+      return json({ type: 'add-person', name: parsed.name, relationWord: parsed.relationWord, target: parsed.target }, 200, origin);
+    }
+    // Whitelisted fields only — never trust the model to keep to the seven, so
+    // it can't smuggle in a phone/email lookup the client would then run.
+    const ATTR_FIELDS = new Set(['work', 'location', 'gender', 'status', 'birthYear', 'name', 'any', 'all']);
+    if (parsed?.type === 'attribute-query' && typeof parsed.field === 'string' && ATTR_FIELDS.has(parsed.field)) {
+      return json(
+        { type: 'attribute-query', field: parsed.field, value: typeof parsed.value === 'string' ? parsed.value : '', aggregate: !!parsed.aggregate },
+        200,
+        origin
+      );
     }
     return json({ type: 'unknown' }, 200, origin);
   },

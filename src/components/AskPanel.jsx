@@ -5,10 +5,16 @@ import { parseQueryAI, resolveAnswer, substituteSelfReferences } from '../utils/
 import Modal from './Modal';
 import '../styles/AskPanel.css';
 
+// `prefill` examples (the add-a-person ones) only drop their text into the box
+// on click instead of running — running them would show a confirm every time,
+// and a careless repeated confirm could add duplicates.
 const EXAMPLES = [
-  'How is Sundari related to Kesavamoorthy?',
-  "Who are Manikandan's cousins?",
-  'Whose birthday is coming up next?',
+  { text: 'How is Iniya related to Manikandan?' },
+  { text: "Who are Manikandan's cousins?" },
+  { text: 'Who works as a software engineer?' },
+  { text: 'Whose birthday is coming up next?' },
+  { text: 'Add <name> as daughter of <person>', prefill: true },
+  { text: "Add <name> as <person>'s brother", prefill: true },
 ];
 
 function formatDaysUntil(days) {
@@ -17,7 +23,11 @@ function formatDaysUntil(days) {
   return `In ${days} days`;
 }
 
-function AnswerBody({ result, onGo, onShowTree, onResolveAmbiguous }) {
+function withArticle(word) {
+  return /^[aeiou]/i.test(word) ? `an ${word}` : `a ${word}`;
+}
+
+function AnswerBody({ result, onGo, onShowTree, onResolveAmbiguous, onConfirmAdd }) {
   if (result.kind === 'pending') {
     return (
       <p className="ask-panel-pending">
@@ -129,6 +139,62 @@ function AnswerBody({ result, onGo, onShowTree, onResolveAmbiguous }) {
     );
   }
 
+  if (result.kind === 'add-confirm') {
+    const { target, relationWord, firstName, lastName, gender } = result;
+    const fullName = [firstName, lastName].filter(Boolean).join(' ');
+    return (
+      <div className="ask-panel-answer ask-panel-confirm">
+        <p>
+          Add <strong>{fullName}</strong>
+          {gender === 'other' ? ' (gender not set — you can fill it in after)' : ` (${gender})`} as{' '}
+          {withArticle(relationWord)} of{' '}
+          <button type="button" className="ask-panel-name" onClick={() => onGo(target.id)}>
+            {getDisplayName(target)}
+          </button>
+          ?
+        </p>
+        <button type="button" className="ask-panel-confirm-yes" onClick={onConfirmAdd}>
+          Add {firstName}
+        </button>
+      </div>
+    );
+  }
+
+  if (result.kind === 'add-done') {
+    return (
+      <p className="ask-panel-meta">
+        Added <strong>{result.name}</strong> as {withArticle(result.relationWord)} of{' '}
+        {getDisplayName(result.target)}.{' '}
+        <button type="button" className="ask-panel-name" onClick={() => onGo(result.newId)}>
+          View their card
+        </button>
+      </p>
+    );
+  }
+
+  if (result.kind === 'people') {
+    const { people, summary, field } = result;
+    // 'all' is a plain head-count — the summary line already says the number,
+    // so skip dumping the entire tree as a list. Every other field shows the
+    // matched people (count questions included — count + names is useful).
+    const showList = field !== 'all' && people.length > 0;
+    return (
+      <div className="ask-panel-answer">
+        <p>{summary}</p>
+        {showList && (
+          <ul className="ask-panel-people">
+            {people.map((p) => (
+              <li key={p.id}>
+                <button type="button" onClick={() => onGo(p.id)}>{getDisplayName(p)}</button>
+                {p.work ? <span className="ask-panel-people-label">{p.work}</span> : null}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    );
+  }
+
   return null;
 }
 
@@ -143,8 +209,9 @@ function AnswerBody({ result, onGo, onShowTree, onResolveAmbiguous }) {
 // `selfName` (the signed-in user's own first name, if linked) lets "my
 // cousins"/"related to me" resolve to an actual person — see
 // substituteSelfReferences.
-export default function AskPanel({ persons, isOpen, onClose, onSelectPerson, onShowConnection, selfName }) {
+export default function AskPanel({ persons, isOpen, onClose, onSelectPerson, onShowConnection, selfName, onAddPerson }) {
   const [query, setQuery] = useState('');
+  const inputRef = useRef(null);
   // Most-recent-first session log — not persisted, just lets someone ask a
   // follow-up without losing the previous answer off-screen. Each entry gets
   // a stable id (not just its array position) since prepending shifts every
@@ -206,6 +273,34 @@ export default function AskPanel({ persons, isOpen, onClose, onSelectPerson, onS
     }));
   };
 
+  // Commits an 'add-confirm' preview to the actual tree via the mutation the
+  // parent passed down (addChild/addSpouse/addParent/addSibling). The write
+  // only ever happens HERE, on the explicit button press — never straight out
+  // of parsing — and the entry flips to an 'add-done' result on success.
+  const confirmAdd = (entryId) => {
+    setHistory((prev) => prev.map((entry) => {
+      if (entry.id !== entryId || entry.result.kind !== 'add-confirm') return entry;
+      const r = entry.result;
+      if (!onAddPerson) {
+        return { ...entry, result: { kind: 'error', message: 'Adding people isn’t available right now.' } };
+      }
+      const partial = { firstName: r.firstName, gender: r.gender };
+      if (r.lastName) partial.lastName = r.lastName;
+      let newId;
+      try {
+        newId = onAddPerson(r.action, r.target.id, partial);
+      } catch (err) {
+        console.error('AskPanel: add failed', err);
+        return { ...entry, result: { kind: 'error', message: 'Something went wrong adding that person.' } };
+      }
+      if (!newId) {
+        return { ...entry, result: { kind: 'error', message: 'Couldn’t add that person — that relationship may already be filled.' } };
+      }
+      const fullName = [r.firstName, r.lastName].filter(Boolean).join(' ');
+      return { ...entry, result: { kind: 'add-done', name: fullName, relationWord: r.relationWord, target: r.target, newId } };
+    }));
+  };
+
   const go = (id) => {
     onSelectPerson?.(id);
     onClose?.();
@@ -214,6 +309,13 @@ export default function AskPanel({ persons, isOpen, onClose, onSelectPerson, onS
   const showTree = (fromId, toId) => {
     onShowConnection?.(fromId, toId);
     onClose?.();
+  };
+
+  // Drops an example into the box (without running it) so the user edits the
+  // placeholders and submits it themselves — used for the add-a-person examples.
+  const fillQuery = (text) => {
+    setQuery(text);
+    inputRef.current?.focus();
   };
 
   return (
@@ -227,9 +329,10 @@ export default function AskPanel({ persons, isOpen, onClose, onSelectPerson, onS
       <form className="ask-panel-form" onSubmit={(e) => { e.preventDefault(); ask(query); }}>
         <input
           type="text"
+          ref={inputRef}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="How is Sundari related to Kesavamoorthy?"
+          placeholder="How is Iniya related to Manikandan?"
           disabled={pending}
           autoFocus
         />
@@ -243,8 +346,8 @@ export default function AskPanel({ persons, isOpen, onClose, onSelectPerson, onS
           <span>Try asking:</span>
           <ul>
             {EXAMPLES.map((ex) => (
-              <li key={ex}>
-                <button type="button" onClick={() => ask(ex)} disabled={pending}>{ex}</button>
+              <li key={ex.text}>
+                <button type="button" onClick={() => (ex.prefill ? fillQuery(ex.text) : ask(ex.text))} disabled={pending}>{ex.text}</button>
               </li>
             ))}
           </ul>
@@ -259,6 +362,7 @@ export default function AskPanel({ persons, isOpen, onClose, onSelectPerson, onS
                 onGo={go}
                 onShowTree={showTree}
                 onResolveAmbiguous={(slot, personId) => resolveAmbiguous(entry.id, slot, personId)}
+                onConfirmAdd={() => confirmAdd(entry.id)}
               />
             </li>
           ))}

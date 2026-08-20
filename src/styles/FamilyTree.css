@@ -409,52 +409,93 @@
   }
 }
 
-/* Badge on anyone married in from another family, whose own parents/siblings render
-   as a separate small tree elsewhere — click to jump there instead of hunting for
-   the dashed line across the canvas. Sits on the avatar ring's top-right edge (~45°),
-   half overlapping it — the same "attached to the ring" treatment the bottom "+"
-   quick-add button already uses, so it reads as one consistent badge language rather
-   than a floating extra. Filled with the primary accent colour (rather than a neutral
-   outline) so it reads as a distinct, noticeable affordance rather than a subtle
-   detail — this is the one badge in the app that opens a whole different view.
-   Geometry: avatar is 60px, 6px from the card top, centered in the 132px-wide card
-   (NODE_W/AVATAR_SIZE/AVATAR_TOP in useTreeLayout.js) — centre (66, 36), radius 30;
-   a 22px badge centred on the ring's 45° point lands ~(76, 4).
-*/
+/* "Their tree" pill on anyone married in from another family, whose own parents/
+   siblings render as a separate small tree elsewhere — tap to jump there instead of
+   hunting for the dashed line across the canvas. A LABELLED pill (not a bare icon)
+   floating just above the avatar: usage is ~90% mobile, where there's no hover and no
+   tooltip, so both the meaning AND the "this is a button" cue have to be visible at
+   rest. Above the avatar is free space here — a married-in person has no parent
+   connector line coming into their top (their parents live in another tree). */
 .mini-card-jump {
   position: absolute;
-  top: 4px;
-  left: 76px;
-  display: flex;
+  top: -18px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border-radius: 50%;
-  border: 2px solid var(--color-surface);
+  gap: 4px;
+  padding: 4px 9px 4px 7px;
+  border-radius: 999px;
+  border: 1.5px solid var(--color-surface);
   background: linear-gradient(135deg, var(--color-primary-white-tint), var(--color-primary));
   color: #fff;
+  font-family: var(--font);
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
   cursor: pointer;
   box-shadow: var(--shadow-md);
-  z-index: 3;
+  z-index: 4;
   transition: transform var(--duration-fast) var(--ease), box-shadow var(--duration-fast) var(--ease);
 }
 
-/* Slightly larger than the 24px button so it's reliably tappable, without reaching
-   far enough into the avatar to steal taps meant for the initials/photo behind it. */
+.mini-card-jump svg {
+  flex-shrink: 0;
+}
+
+/* Extends the tap target to a comfortable ~44px touch height without the pill
+   visually growing — usage is mostly on phones. */
 .mini-card-jump::before {
   content: '';
   position: absolute;
-  inset: -4px;
-  border-radius: 50%;
+  inset: -11px -6px;
+}
+
+/* A bright highlight that continuously runs around the pill's rim — a strong,
+   always-on "this is a live button" cue for touch, where there's no hover to reveal
+   interactivity. The double-mask keeps only a ~2.5px ring; the conic gradient's
+   bright arc sweeps around as --jump-angle animates. Degrades to a static arc where
+   @property isn't supported (the animation just can't drive the angle). */
+.mini-card-jump::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  padding: 2.5px;
+  background: conic-gradient(from var(--jump-angle, 0deg), transparent 48%, #fff 66%, var(--color-primary-white-tint) 74%, transparent 86%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.9));
+  animation: jump-edge-run 1.6s linear infinite;
+}
+
+/* :active (not :hover) so touch taps still get press feedback — keeps the
+   centring translate. */
+.mini-card-jump:active {
+  transform: translateX(-50%) scale(0.94);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Drives the running-edge highlight above. Registered so the angle can animate
+   (a plain CSS var can't be tweened). */
+@property --jump-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes jump-edge-run {
+  to { --jump-angle: 360deg; }
 }
 
 /* Gated: these are themselves tappable buttons, so an ungated :hover would need
    the same WebKit double-tap workaround as the main mini-card did. */
 @media (hover: hover) {
   .mini-card-jump:hover {
-    transform: scale(1.15);
+    transform: translateX(-50%) scale(1.08);
     box-shadow: 0 0 0 2px var(--color-primary), var(--shadow-md);
   }
 

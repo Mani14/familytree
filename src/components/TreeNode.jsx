@@ -1,5 +1,5 @@
 import { motion, useReducedMotion } from 'framer-motion';
-import { ArrowUpRight, BadgeCheck, Plus } from 'lucide-react';
+import { BadgeCheck, GitBranch, Plus } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { NODE_W, NODE_H, COUPLE_GAP, AVATAR_SIZE } from '../hooks/useTreeLayout';
 import { getDisplayName, getFullName, getInitials, isPrimaryOnLeft } from '../utils/familyUtils';
@@ -87,13 +87,15 @@ function MiniCard({ person, isFocus, isHighlighted, isLocated, isMe, hasSpouse, 
         <button
           type="button"
           className="mini-card-jump"
-          title="Has their own family recorded — jump to their family tree"
+          title="Has their own family tree — tap to open it"
+          aria-label="Open this person's own family tree"
           onClick={(e) => {
             e.stopPropagation();
             onJumpTo(person.id);
           }}
         >
-          <ArrowUpRight size={14} strokeWidth={2.5} />
+          <GitBranch size={12} strokeWidth={2.5} />
+          <span>Their tree</span>
         </button>
       )}
 
