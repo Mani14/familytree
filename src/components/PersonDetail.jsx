@@ -234,6 +234,14 @@ export default function PersonDetail({
   const hasStats = stats && (stats.childrenCount > 0 || stats.grandchildrenCount > 0 || stats.siblingsCount > 0);
   const isMe = !!meId && meId === person.id;
 
+  // Split off the last word so it can stay glued to the edit pencil (see the
+  // nowrap tail below) — keeps the pencil from ever orphaning onto its own line
+  // under a name that happens to fill exactly one line.
+  const fullName = getFullName(person);
+  const lastSpace = fullName.lastIndexOf(' ');
+  const namePrefix = lastSpace === -1 ? '' : fullName.slice(0, lastSpace + 1);
+  const nameLastWord = lastSpace === -1 ? fullName : fullName.slice(lastSpace + 1);
+
   return (
     <motion.aside
       className="person-detail"
@@ -251,14 +259,22 @@ export default function PersonDetail({
         </span>
         <div>
           <div className="detail-name-row">
+            {/* Pencil sits INSIDE the heading, flowing right after the name text,
+                so it hugs the name instead of being pushed to the row's far edge
+                when a long name wraps to two lines. */}
             <h2 className="detail-name">
               {!person.isAlive && <span className="dagger">†</span>}
-              {getFullName(person)}
-              {person.petName?.trim() && <span className="detail-pet-name">({person.petName.trim()})</span>}
+              {namePrefix}
+              {/* Last word + pet name + pencil stay together (nowrap) so the
+                  pencil hugs the name and never wraps onto a line by itself. */}
+              <span className="detail-name-tail">
+                {nameLastWord}
+                {person.petName?.trim() && <span className="detail-pet-name">({person.petName.trim()})</span>}
+                <button type="button" className="detail-edit-btn" onClick={onEdit} title="Edit" aria-label="Edit">
+                  <Pencil size={13} />
+                </button>
+              </span>
             </h2>
-            <button type="button" className="detail-edit-btn" onClick={onEdit} title="Edit" aria-label="Edit">
-              <Pencil size={13} />
-            </button>
           </div>
           {!person.isAlive && <span className="detail-badge">Passed Away</span>}
           {isMe && (
