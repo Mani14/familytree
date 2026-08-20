@@ -106,19 +106,21 @@
    person's father-lineage or mother-lineage tree (see FamilyTree's sideOf/treeRootId). */
 .couple-side-father {
   background: var(--color-father-tint);
-  box-shadow: inset 0 0 0 1px var(--color-father-tint-border);
+  box-shadow: inset 0 0 0 1px var(--color-father-tint-border), 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 
 .couple-side-mother {
   background: var(--color-mother-tint);
-  box-shadow: inset 0 0 0 1px var(--color-mother-tint-border);
+  box-shadow: inset 0 0 0 1px var(--color-mother-tint-border), 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 
 .couple-link {
   margin-top: 34px;
   height: 3px;
-  background: var(--color-female);
-  opacity: 0.5;
+  /* Blend of both partners' colours (male on the left, female on the right per
+     isPrimaryOnLeft) so the marriage line reads as their union rather than a
+     pink, female-only line. */
+  background: linear-gradient(90deg, rgba(var(--color-male-rgb), 0.5), rgba(var(--color-female-rgb), 0.5));
   border-radius: 2px;
 }
 
