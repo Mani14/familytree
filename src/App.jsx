@@ -1117,6 +1117,7 @@ export default function App() {
               onFindConnection={handleFindConnection}
               overrides={relationshipOverrides}
               onEditRelationship={isAdmin ? handleEditRelationship : undefined}
+              onShowOurLink={meId ? (id) => runConnection(meId, id) : undefined}
             />
           )}
         </AnimatePresence>

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion, Reorder, useDragControls } from 'framer-motion';
-import { BadgeCheck, Baby, Briefcase, Cake, ChevronDown, ChevronUp, Clock, Eye, GitBranch, GripVertical, HeartHandshake, HelpCircle, Mail, MapPin, Pencil, Phone, Route, Sparkles, Trash2, UserPlus, Users, X, XCircle } from 'lucide-react';
+import { BadgeCheck, Baby, Briefcase, Cake, ChevronDown, ChevronUp, Clock, Eye, GitBranch, GripVertical, HeartHandshake, Mail, MapPin, Pencil, Phone, Route, Sparkles, Trash2, UserPlus, Users, X, XCircle } from 'lucide-react';
 import {
   formatBirthdayNoYear,
   formatDateDisplay,
@@ -205,6 +205,7 @@ export default function PersonDetail({
   onFindConnection,
   overrides = [],
   onEditRelationship,
+  onShowOurLink,
 }) {
   const [showWhy, setShowWhy] = useState(false);
   if (!person) return null;
@@ -267,7 +268,20 @@ export default function PersonDetail({
           )}
           {relationshipLabel && (
             <span className="detail-badge detail-badge-relation">
-              {relationshipLabel}
+              {/* The term itself is the link into the step-by-step explainer
+                  (replaces the old separate "?" button). */}
+              {anchorId ? (
+                <button
+                  type="button"
+                  className="detail-relation-link"
+                  onClick={() => setShowWhy(true)}
+                  title="See how you're related, step by step"
+                >
+                  {relationshipLabel}
+                </button>
+              ) : (
+                relationshipLabel
+              )}
               {relationshipSignature && onEditRelationship && (
                 <button
                   type="button"
@@ -279,18 +293,17 @@ export default function PersonDetail({
                   <Pencil size={10} />
                 </button>
               )}
-              {anchorId && (
-                <button
-                  type="button"
-                  className="detail-relation-edit-btn"
-                  onClick={() => setShowWhy(true)}
-                  title="See how you're related, step by step"
-                  aria-label="Explain relationship"
-                >
-                  <HelpCircle size={11} />
-                </button>
-              )}
             </span>
+          )}
+          {onShowOurLink && !isMe && (
+            <button
+              type="button"
+              className="detail-relation-showlink"
+              onClick={() => onShowOurLink(person.id)}
+              title="Watch the connection from you to this person travel across the tree"
+            >
+              <Route size={12} /> Show our link
+            </button>
           )}
           {ageInfo && (
             <span className="detail-age">
