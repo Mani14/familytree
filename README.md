@@ -21,19 +21,30 @@ Live at:
   any pair of people — not just direct family, but cousins, in-laws,
   removed-uncles, chained relationships through multiple marriages, etc. See
   [`src/utils/familyUtils.js`](src/utils/familyUtils.js).
-- **Self-service relationship-term corrections** — if a computed Tamil term
-  is wrong for your family's actual usage, fix it once and it applies to
-  every pair sharing that same relationship *shape*, not just the two people
-  you were looking at.
-- **"Ask About the Family"** — a plain-English question box ("How is X
-  related to Y?", "Who are X's cousins?", "Whose birthday is coming up
-  next?"). Understanding the question is AI-assisted (a free-tier LLM via a
-  small Cloudflare Worker); computing the actual answer always stays local,
-  using the same deterministic relationship engine as everywhere else. See
+- **Relationship-term corrections (admin)** — if a computed Tamil term is
+  wrong for your family's actual usage, an admin can fix it once (via the
+  pencil on a person's relationship badge, or **Admin Settings → Relationship
+  Rules**) and it applies to every pair sharing that same relationship
+  *shape*, not just the two people you were looking at.
+- **"Ask About the Family"** — a plain-English box that answers questions
+  ("How is X related to Y?", "Who are X's cousins?", "Whose birthday is
+  coming up next?"), searches recorded details ("who works as a teacher?",
+  "who lives in Chennai?", "how many people are in the tree?", or by gender /
+  living-or-deceased / birth year / name), **and can add a new person**
+  ("add Ravi as son of Kumar", "add a daughter named Priya to Meena") — with
+  an on-screen confirm before anything is saved. Understanding the question
+  is AI-assisted (a free-tier LLM via a small Cloudflare Worker); computing
+  the answer — and parsing every *add* command — always stays local, using the
+  same deterministic relationship engine as everywhere else. Add commands in
+  particular are detected strictly locally and never sent to the AI. See
   [Architecture](#architecture) below, [`src/utils/naturalQuery.js`](src/utils/naturalQuery.js),
   and [`worker/`](worker).
 - **Find Connection** — pick any two people and watch an animated path trace
   the blood/marriage connection between them, narrating each stop.
+- **"Show our link" & "How you're related"** — on any person's card, one tap
+  drives that same animated path from *you* (your linked person) to them; the
+  relationship term itself is a link that opens a step-by-step explanation of
+  every hop in the chain.
 - **Daily birthday-alert emails** — a Cloudflare Worker Cron Trigger emails
   the birthday person directly (if they've linked their own account) and,
   if an admin has turned it on, every signed-in family member on someone's
@@ -112,12 +123,16 @@ verification.
 
 The important design decision: **the AI never answers anything and never
 sees family data.** It only ever converts a free-form question into a small
-structured intent (`{type, nameA/nameB/name, relationWord}`); the actual
-relationship lookup — including every Tamil kinship rule — runs entirely in
-the browser via the same functions used everywhere else in the app.
-`parseQueryAI` in `src/utils/naturalQuery.js` falls back automatically to a
-local regex-based parser if the Worker is unreachable, so the feature
-degrades gracefully rather than breaking outright.
+structured intent (`relation-between`, `relation-list`, `birthday-next`,
+`attribute-query`, `add-person`, or `meta`); the actual lookup — including
+every Tamil kinship rule — runs entirely in the browser via the same functions
+used everywhere else in the app. The one *write* intent, `add-person`, is even
+stronger: it's detected entirely by local regex and **never sent to the Worker
+at all**, so an add command can't be misrouted by the model — and it still
+only writes after an explicit on-screen confirm. `parseQueryAI` in
+`src/utils/naturalQuery.js` falls back automatically to a local regex-based
+parser if the Worker is unreachable, so the feature degrades gracefully rather
+than breaking outright.
 
 The Worker is on **Cloudflare**, not Firebase Cloud Functions, specifically
 because Firebase Functions require the paid Blaze plan just to make an
@@ -252,13 +267,20 @@ infrastructure. Full setup and restore instructions:
 
 ## Testing approach
 
-There's no formal test suite / CI test step. The relationship engine
-(`familyUtils.js`, `naturalQuery.js`) is pure, dependency-free JS, so changes
-are verified with small ad-hoc Node scripts: construct a synthetic `persons`
+There's a small **Vitest** suite (`npm test`, or `npm run test:watch`)
+covering the pure logic: `src/utils/familyUtils.test.js` (the relationship
+engine), `src/utils/naturalQuery.test.js` (Ask parsing, add-command
+detection, and answer resolution), and `src/utils/dataHealth.test.js`. Run it
+after any change to those files.
+
+Beyond the committed suite, the relationship engine (`familyUtils.js`,
+`naturalQuery.js`) is pure, dependency-light JS, so trickier cases are also
+verified with small ad-hoc Node scripts: construct a synthetic `persons`
 object, import the function directly via a `file://` URL, and assert on the
-output. This pattern — accumulated across many bug fixes — is the closest
-thing to a regression suite for the relationship logic; there isn't a
-committed test directory for it currently.
+output. (`familyUtils.js` is import-safe in plain Node; `naturalQuery.js`
+also pulls in `src/lib/firebase.js`, so a throwaway script that imports it
+should call `process.exit(0)` at the end, or Firebase's keep-alive holds the
+process open.)
 
 For anything UI-facing, verify manually with `npm run dev` — a real Google
 sign-in is required for most flows (multi-account behavior, the Ask panel's
@@ -280,6 +302,8 @@ src/
     familyUtils.js             — the relationship engine (English + Tamil kinship
                                   logic, signatures, path-finding) — the core of the app
     naturalQuery.js            — Ask panel's question parsing + answer resolution
+                                  (relationship/attribute/count queries + add-person)
+    *.test.js                   — Vitest suites (familyUtils, naturalQuery, dataHealth)
     dataHealth.js               — Data Health Check's consistency scan
     relationshipReference.js, tamilRelationshipTerms.js — reference data
     mapTiles.js, mapMarkers.js  — Family Map's tile/marker helpers

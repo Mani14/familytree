@@ -8,9 +8,10 @@ conventions and gotchas — this file is the "how do I actually do X" runbook.
 
 1. Make the change.
 2. `npm run build` — must succeed with no errors.
-3. If you touched `src/utils/familyUtils.js` or `src/utils/naturalQuery.js`,
-   re-run the accumulated Node-script regression suite (see "Test a
-   relationship-engine change" below) before considering it done.
+3. `npm test` — the Vitest suite (relationship engine, Ask parsing, data
+   health) must stay green. If you touched `src/utils/familyUtils.js` or
+   `src/utils/naturalQuery.js`, also re-run the accumulated Node-script checks
+   (see "Test a relationship-engine change" below) before considering it done.
 4. Only commit/push if explicitly asked:
    ```bash
    git add <specific files>   # never -A / . — review what's staged
@@ -23,8 +24,11 @@ conventions and gotchas — this file is the "how do I actually do X" runbook.
 
 ## Test a relationship-engine change
 
-`familyUtils.js` has zero external imports, so it can be exercised directly
-in plain Node without any build step:
+First, `npm test` runs the committed **Vitest** suite
+(`familyUtils.test.js`, `naturalQuery.test.js`, `dataHealth.test.js`) — add a
+case there for any new behavior. For quick throwaway exploration beyond the
+suite, `familyUtils.js` has zero external imports, so it can be exercised
+directly in plain Node without any build step:
 
 ```js
 // scratch.mjs
@@ -84,6 +88,16 @@ introduced it):
    }).then(r=>r.json()).then(d=>console.log(d.choices?.[0]?.message?.content));
    "
    ```
+
+> **Write intents are different from questions.** A command that *changes*
+> data (like `add-person` — "add Ravi as son of Kumar") must be detected by
+> strict LOCAL regex and resolved WITHOUT the AI Worker: short-circuit it at
+> the top of BOTH `parseQuery` and `parseQueryAI` so the model can never
+> misroute an add into some other (read) intent, and only ever write after an
+> explicit on-screen confirm. See `parseAddCommand` and the `add-confirm` /
+> `add-done` result kinds in `naturalQuery.js` + `AskPanel.jsx` for the
+> reference implementation; the Worker's `add-person` shape exists only as a
+> future-proof backup, not the primary path.
 
 ## Deploy the Cloudflare Worker
 

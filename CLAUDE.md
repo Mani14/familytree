@@ -22,17 +22,20 @@ classify locally + via the Worker, resolve the answer with real code.
 
 - **Build after every change**: `npm run build`. It's fast and catches
   real mistakes (bad imports, JSX errors) before they reach the user.
-- **Test the relationship engine with throwaway Node scripts**, not a
-  formal test framework (there isn't one). `familyUtils.js` and
-  `naturalQuery.js` have zero external side effects at import time safe
-  enough for this, so:
+- **Run the test suite**: `npm test` (Vitest — `familyUtils.test.js`,
+  `naturalQuery.test.js`, `dataHealth.test.js`). Add a case here for any new
+  relationship-engine or Ask-parsing behavior; keep it green.
+- **Also test the relationship engine with throwaway Node scripts** for
+  quick exploration beyond the committed suite. `familyUtils.js` has zero
+  external imports so it's import-safe in plain Node; `naturalQuery.js` also
+  pulls in `src/lib/firebase.js`, so a throwaway script importing it must end
+  with `process.exit(0)` or Firebase's keep-alive holds the process open. So:
   ```js
   import { getRelationshipLabelTamil } from 'file:///C:/absolute/path/to/src/utils/familyUtils.js';
   // build a synthetic `persons` object, call the function, console.log and eyeball it
   ```
   Keep these scripts around (in the session scratchpad) and re-run the
-  accumulated set after any engine change — they're the only regression
-  coverage that exists for this logic. Don't delete them as "cleanup."
+  accumulated set after any engine change. Don't delete them as "cleanup."
 - **Only commit/push when explicitly asked.** Default to leaving changes
   uncommitted after making them, and say so. "push" means commit *and* push
   everything pending, not just the most recent change.
@@ -158,6 +161,33 @@ classify locally + via the Worker, resolve the answer with real code.
   environment. If a Grep result shows something like `\ Fallback #3:` where
   a `//` comment would make more sense, re-read the file directly with the
   Read tool before assuming the file is actually broken — it usually isn't.
+- **The Ask panel now WRITES, not just reads — but only through one narrow,
+  local path.** "add X as son of Y" (and a few phrasings of it) creates a
+  person via the existing `addChild`/`addSpouse`/`addParent`/`addSibling`
+  mutations. Two rules keep this safe and must not be "simplified" away:
+  (1) the add command is detected by strict local regex (`parseAddCommand`)
+  and short-circuited at the TOP of both `parseQuery` AND `parseQueryAI` so it
+  is **never sent to the AI Worker** — an older/mis-guessing model must not be
+  able to turn a write into some other intent; (2) it only ever writes after
+  an explicit on-screen confirm (the `add-confirm` → `add-done` result kinds
+  in `AskPanel.jsx`), never straight out of parsing. The Worker's own
+  `add-person` shape exists purely as a future-proof backup and is not the
+  live path. Same "answering/parsing stays local, AI only classifies" rule as
+  the read queries — don't blur it for writes either.
+- **Relationship-term editing is admin-only, and the Relationship Rules panel
+  lives under Admin Settings**, not on a public header/mobile-menu button
+  anymore. The pencil on a person's relationship badge renders only when
+  `onEditRelationship` is passed, and App.jsx passes it as
+  `isAdmin ? handleEditRelationship : undefined` — so the gating is at the
+  prop, not inside PersonDetail. Don't re-add a public entry point to
+  Relationship Rules without checking this was a deliberate admin-only move.
+- **The chained relationship resolvers are memoized per-node on purpose — do
+  not remove it.** `getRelationshipLabel`/`getRelationshipLabelTamil` had an
+  exponential blow-up (one distant pair measured at ~21,000ms; building the
+  whole relation list froze the tab). The fix was per-node memoization inside
+  the chained resolvers in `familyUtils.js` (~21,000ms → single-digit ms).
+  If you refactor those resolvers, keep the memoization — a "cleaner" naive
+  recursion reintroduces the freeze.
 
 ## Secrets and credentials
 
