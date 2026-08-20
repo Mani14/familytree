@@ -1235,10 +1235,10 @@ function tamilAncestorSpouseTerm(distRoot, male, female) {
 // husband) or Maapillai (younger sister's husband).
 function tamilSiblingSpouseTermFromOrder(siblingGender, order, personGender) {
   if (siblingGender === 'male' && personGender === 'female') {
-    return order === 'elder' ? 'அண்ணி' : order === 'younger' ? 'மருமகள்' : 'சகோதரனின் மனைவி';
+    return order === 'elder' ? 'அண்ணி' : order === 'younger' ? 'கொழுந்தியா' : 'சகோதரனின் மனைவி';
   }
   if (siblingGender === 'female' && personGender === 'male') {
-    return order === 'elder' ? 'மாமா' : order === 'younger' ? 'மாப்பிள்ளை' : 'சகோதரியின் கணவர்';
+    return order === 'elder' ? 'அத்தான்/மாமா' : order === 'younger' ? 'மாப்பிள்ளை' : 'சகோதரியின் கணவர்';
   }
   return null;
 }
@@ -1316,7 +1316,7 @@ function tamilCoSiblingInLawTerm(persons, personId, rootId, rootGender, personGe
   const ca = commonAncestor(persons, root.spouseId, person.spouseId);
   if (!ca || ca.distA !== 1 || ca.distB !== 1) return null;
   if (rootGender === 'male' && personGender === 'male') return 'ஓரம்படி/சகலை';
-  if (rootGender === 'female' && personGender === 'female') return 'ஓப்பந்தியார்';
+  if (rootGender === 'female' && personGender === 'female') return 'ஓரகத்தி';
   return null;
 }
 
