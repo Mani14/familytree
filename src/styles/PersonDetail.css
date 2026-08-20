@@ -6,8 +6,12 @@
   width: 320px;
   padding: var(--space-5);
   overflow-y: auto;
-  border-left: 1px solid var(--glass-border);
-  box-shadow: var(--shadow-lg);
+  /* Solid surface + a visible (non-white) border and a leftward shadow so the
+     panel reads as clearly separate from the light tree behind it, instead of
+     blending in as a translucent near-white sheet on a near-white background. */
+  background: var(--color-surface);
+  border-left: 1px solid var(--color-border);
+  box-shadow: -6px 0 24px rgba(15, 23, 42, 0.14), var(--shadow-lg);
   z-index: 15;
 }
 
@@ -49,9 +53,8 @@
   gap: 12px;
   margin: calc(-1 * var(--space-5)) calc(-1 * var(--space-5)) 16px;
   padding: var(--space-5) calc(var(--space-5) + 30px) 12px var(--space-5);
-  background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .detail-name-row {
@@ -502,9 +505,12 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 6px 14px;
-  font-size: 13px;
+  gap: 5px;
+  padding: 6px 10px;
+  font-size: 12.5px;
+  /* Keep labels (e.g. "View as this person") on one line even on a phone-width
+     column instead of wrapping to two. */
+  white-space: nowrap;
   border: 1px solid var(--color-primary);
   border-radius: var(--radius-md);
   background: var(--color-primary);
@@ -535,6 +541,14 @@
   color: #fff !important;
 }
 
+/* When the button count is even, the button just before Delete sits alone in a
+   row with an empty cell beside it — tuck Delete into that cell (normal width)
+   instead of spanning a whole extra row. When odd, the rows above are already
+   full, so Delete keeps its full-width row. */
+.detail-actions button.detail-delete:nth-child(even) {
+  grid-column: auto;
+}
+
 /* "This is You ✓" — stands out from the other plain action buttons so it
    reads as a confirmed state, not just another action to take. */
 .detail-action-active {
@@ -558,8 +572,12 @@
     width: auto;
     max-height: 80vh;
     border-left: none;
-    border-top: 1px solid var(--glass-border);
+    border-top: 1px solid var(--color-border);
     border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    /* Bottom sheet: the shadow has to point UP out of the sheet's open top edge
+       (the base panel's leftward/downward shadow would fall off-screen here) so
+       the sheet visibly lifts off the light tree behind it. */
+    box-shadow: 0 -10px 30px rgba(15, 23, 42, 0.18);
     padding-bottom: calc(var(--space-5) + env(safe-area-inset-bottom));
   }
 }
