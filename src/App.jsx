@@ -154,6 +154,19 @@ export default function App() {
   // superseded path can't keep hopping the located ring around on its own.
   const travelRef = useRef({ path: [], index: 0 });
   const travelTimerRef = useRef(null);
+  // The view mode to return to once a connection "drive" finishes — travel forces
+  // Full Tree View so the whole path is drawable, but leaving the user stranded
+  // there (Pedigree View's single-tap-to-open becomes a two-tap focus-then-open)
+  // was a surprise. viewModeRef mirrors viewMode so the choke point can read the
+  // current value without re-creating the travel callbacks on every view change.
+  const viewModeRef = useRef(viewMode);
+  viewModeRef.current = viewMode;
+  const preTravelViewModeRef = useRef(null);
+  const restorePreTravelView = useCallback(() => {
+    const prev = preTravelViewModeRef.current;
+    preTravelViewModeRef.current = null;
+    if (prev && prev !== viewModeRef.current) setViewMode(prev);
+  }, []);
 
   const toggleCollapse = useCallback((id) => {
     setCollapsed((prev) => {
@@ -250,7 +263,9 @@ export default function App() {
     setHighlightedChain([]);
     setLocatedId(null);
     setConnectionResult(null);
-  }, []);
+    // Dismissing mid-drive (before it finishes on its own) still returns you home.
+    restorePreTravelView();
+  }, [restorePreTravelView]);
 
   // "Find Connection": pick a second person, then highlight the blood/marriage
   // path between them via the SAME highlight mechanism as "Highlight Lineage" —
@@ -632,15 +647,21 @@ export default function App() {
     const { path, index } = travelRef.current;
     if (index >= path.length) {
       setIsTraveling(false);
+      // Back to whatever view the trip started from, so normal single-tap
+      // navigation (and the reset button) behave as they did before the drive.
+      restorePreTravelView();
       return;
     }
     handleLocatePerson(path[index]);
     travelRef.current = { path, index: index + 1 };
     travelTimerRef.current = setTimeout(advanceTravel, TRAVEL_STEP_MS);
-  }, [handleLocatePerson]);
+  }, [handleLocatePerson, restorePreTravelView]);
 
   const handleTravelPath = useCallback((path) => {
     clearTimeout(travelTimerRef.current);
+    // Remember where to return once the drive ends (the choke point for both a
+    // fresh trip and a Replay), then force the wide view for the trip itself.
+    preTravelViewModeRef.current = viewModeRef.current;
     // Always start from Full Tree View, never wherever a PREVIOUS trip's mid-way
     // jump detour (see handleLocateNotFound) left viewMode sitting — a jump only
     // ever switches TO Pedigree View, nothing ever switches it back, so replaying
