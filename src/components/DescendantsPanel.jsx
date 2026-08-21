@@ -70,7 +70,14 @@ function DescNode({ persons, node, collapsed, onToggle, onSelect }) {
         ) : (
           <span className="descendants-toggle-spacer" />
         )}
-        <button type="button" className="descendants-person" onClick={() => onSelect(node.id)}>
+        {/* A node WITH children toggles collapse on the whole row — the rows are
+            small, so an accidental tap should never open a profile; only leaf
+            nodes (nothing to collapse) open the person on tap. */}
+        <button
+          type="button"
+          className="descendants-person"
+          onClick={() => (hasKids ? onToggle(node.id) : onSelect(node.id))}
+        >
           <span className={`avatar avatar-${p.gender} descendants-avatar`}>
             {p.photo ? <img src={p.photo} alt="" /> : getInitials(p)}
           </span>

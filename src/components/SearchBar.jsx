@@ -6,12 +6,10 @@ import '../styles/SearchBar.css';
 
 const MAX_RESULTS = 8;
 
-// A one-line "1990 · Teacher · Chennai" hint under each result, so searching by
-// job or place makes it obvious why someone matched.
+// A one-line "Teacher · Chennai" hint under each result, so searching by job or
+// place makes it obvious why someone matched.
 const resultSubtext = (p) => {
   const bits = [];
-  const year = (p.dob || '').slice(0, 4);
-  if (year) bits.push(year);
   if (p.work) bits.push(p.work);
   if (p.location) bits.push(p.location.split(',')[0].trim());
   return bits.join(' · ');
