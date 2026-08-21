@@ -86,6 +86,8 @@ Extract names exactly as written in the question — don't correct spelling, don
 
 function corsHeaders(origin) {
   const allowed = new Set([
+    'https://familyroots.co.in',
+    'https://www.familyroots.co.in',
     'https://family-tree-3b760.web.app',
     'https://family-tree-3b760.firebaseapp.com',
     'http://localhost:5173',
