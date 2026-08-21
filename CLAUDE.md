@@ -162,15 +162,21 @@ classify locally + via the Worker, resolve the answer with real code.
   a `//` comment would make more sense, re-read the file directly with the
   Read tool before assuming the file is actually broken — it usually isn't.
 - **The Ask panel now WRITES, not just reads — but only through one narrow,
-  local path.** "add X as son of Y" (and a few phrasings of it) creates a
-  person via the existing `addChild`/`addSpouse`/`addParent`/`addSibling`
-  mutations. Two rules keep this safe and must not be "simplified" away:
-  (1) the add command is detected by strict local regex (`parseAddCommand`)
-  and short-circuited at the TOP of both `parseQuery` AND `parseQueryAI` so it
-  is **never sent to the AI Worker** — an older/mis-guessing model must not be
-  able to turn a write into some other intent; (2) it only ever writes after
-  an explicit on-screen confirm (the `add-confirm` → `add-done` result kinds
-  in `AskPanel.jsx`), never straight out of parsing. The Worker's own
+  local path.** "add X as son of Y" creates a person via the existing
+  `addChild`/`addSpouse`/`addParent`/`addSibling` mutations; the edit commands
+  ("set X's job to …", "X lives in …", "mark X as deceased", "X married Y")
+  go through `updatePerson`/`linkExisting`. Two rules keep this safe and must
+  not be "simplified" away: (1) every write command is detected by strict
+  local regex (`parseAddCommand` / `parseEditCommand`) and short-circuited at
+  the TOP of both `parseQuery` AND `parseQueryAI` so it is **never sent to the
+  AI Worker** — an older/mis-guessing model must not be able to turn a write
+  into some other intent, and a QUESTION like "who lives in Chennai" must not
+  be mistaken for the "X lives in …" command (hence the `QUESTION_OPENER`
+  guard in `parseEditCommand`); (2) it only ever writes after an explicit
+  on-screen confirm (the `add-confirm`/`edit-confirm` → `*-done` result kinds
+  in `AskPanel.jsx`), never straight out of parsing — and the mutation runs
+  OUTSIDE the `setHistory` updater (calling a parent setState inside a state
+  updater throws a "setState during render" warning). The Worker's own
   `add-person` shape exists purely as a future-proof backup and is not the
   live path. Same "answering/parsing stays local, AI only classifies" rule as
   the read queries — don't blur it for writes either.

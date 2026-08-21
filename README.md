@@ -14,9 +14,10 @@ Live at:
 - **One shared family tree**, stored in a single Firestore document, editable
   by anyone signed in with Google — additions/edits are visible to the whole
   family in real time.
-- **Full Tree View** (every lineage side by side) and **Lineage/Pedigree
-  View** (one person's own father-side + mother-side ancestry, descendants
-  hanging below) — pan, zoom, MiniMap, collapse/expand.
+- **Lineage/Pedigree View** — one person's own father-side + mother-side
+  ancestry with descendants hanging below; pan, zoom, MiniMap,
+  collapse/expand. Tracing a connection temporarily widens to the full family
+  forest (every lineage side by side) so the whole path can be drawn.
 - **Relationship terms computed automatically**, in English and Tamil, for
   any pair of people — not just direct family, but cousins, in-laws,
   removed-uncles, chained relationships through multiple marriages, etc. See
@@ -26,19 +27,27 @@ Live at:
   pencil on a person's relationship badge, or **Admin Settings → Relationship
   Rules**) and it applies to every pair sharing that same relationship
   *shape*, not just the two people you were looking at.
-- **"Ask About the Family"** — a plain-English box that answers questions
-  ("How is X related to Y?", "Who are X's cousins?", "Whose birthday is
-  coming up next?"), searches recorded details ("who works as a teacher?",
-  "who lives in Chennai?", "how many people are in the tree?", or by gender /
-  living-or-deceased / birth year / name), **and can add a new person**
-  ("add Ravi as son of Kumar", "add a daughter named Priya to Meena") — with
-  an on-screen confirm before anything is saved. Understanding the question
-  is AI-assisted (a free-tier LLM via a small Cloudflare Worker); computing
-  the answer — and parsing every *add* command — always stays local, using the
-  same deterministic relationship engine as everywhere else. Add commands in
-  particular are detected strictly locally and never sent to the AI. See
+- **"Ask About the Family"** — a plain-English box (type or **speak** via the
+  mic) that answers questions ("How is X related to Y?", "Who are X's
+  cousins?", "Whose birthday is coming up next?"), searches recorded details
+  ("who works as a teacher?", "who lives in Chennai?", "how many people are in
+  the tree?", or by gender / living-or-deceased / birth year / name), **and
+  can change the tree** — add a person ("add Ravi as son of Kumar"), set a
+  field ("set Kumar's job to teacher", "Ravi lives in Chennai"), mark someone
+  deceased/living, or record a marriage ("Ravi married Priya") — always with
+  an on-screen confirm before anything is saved. Understanding the question is
+  AI-assisted (a free-tier LLM via a small Cloudflare Worker); computing the
+  answer — and parsing every *write* command — always stays local, using the
+  same deterministic engine as everywhere else. Write commands in particular
+  are detected strictly locally and never sent to the AI. See
   [Architecture](#architecture) below, [`src/utils/naturalQuery.js`](src/utils/naturalQuery.js),
   and [`worker/`](worker).
+- **Descendants chart** — from any person's card, an indented,
+  collapsible tree of all their descendants ("12 children · 30 grandchildren · …"),
+  each row tapping through to that person. See
+  [`src/components/DescendantsPanel.jsx`](src/components/DescendantsPanel.jsx).
+- **Timeline** (admin) — every birth, marriage, and death in chronological
+  order. See [`src/components/TimelinePanel.jsx`](src/components/TimelinePanel.jsx).
 - **Find Connection** — pick any two people and watch an animated path trace
   the blood/marriage connection between them, narrating each stop.
 - **"Show our link" & "How you're related"** — on any person's card, one tap
@@ -53,12 +62,15 @@ Live at:
   real map.
 - **Data Health Check** (admin) — flags dangling references, asymmetric
   links, and unfilled placeholder records.
-- **Import/Export** as JSON, plus export the tree as an Image or PDF.
+- **Import/Export** as JSON **or GEDCOM** (the standard genealogy format used
+  by Ancestry/MyHeritage/FamilySearch), plus export the tree as an Image or
+  PDF. See [`src/utils/gedcom.js`](src/utils/gedcom.js).
 - Full undo/redo, drag-to-reorder siblings (birth order), dark mode, "Add Me"
-  self-linking, per-person personal root ("Set as Root"/"Locate Me").
+  self-linking, per-person personal root ("Set as Root"/"Locate Me"), and one
+  global search (by name, job, or place).
 
 For the full up-to-date feature list as shown to users, see the in-app
-**Demo** page ([`src/components/FeatureShowcase.jsx`](src/components/FeatureShowcase.jsx)).
+**How to use the app** page ([`src/components/FeatureShowcase.jsx`](src/components/FeatureShowcase.jsx)).
 
 ## Tech stack
 
@@ -126,10 +138,11 @@ sees family data.** It only ever converts a free-form question into a small
 structured intent (`relation-between`, `relation-list`, `birthday-next`,
 `attribute-query`, `add-person`, or `meta`); the actual lookup — including
 every Tamil kinship rule — runs entirely in the browser via the same functions
-used everywhere else in the app. The one *write* intent, `add-person`, is even
-stronger: it's detected entirely by local regex and **never sent to the Worker
-at all**, so an add command can't be misrouted by the model — and it still
-only writes after an explicit on-screen confirm. `parseQueryAI` in
+used everywhere else in the app. The *write* intents — `add-person` and the
+edit commands (set a field, mark deceased/living, record a marriage) — are even
+stronger: they're detected entirely by local regex and **never sent to the
+Worker at all**, so a command can't be misrouted by the model — and they still
+only write after an explicit on-screen confirm. `parseQueryAI` in
 `src/utils/naturalQuery.js` falls back automatically to a local regex-based
 parser if the Worker is unreachable, so the feature degrades gracefully rather
 than breaking outright.
@@ -269,9 +282,9 @@ infrastructure. Full setup and restore instructions:
 
 There's a small **Vitest** suite (`npm test`, or `npm run test:watch`)
 covering the pure logic: `src/utils/familyUtils.test.js` (the relationship
-engine), `src/utils/naturalQuery.test.js` (Ask parsing, add-command
-detection, and answer resolution), and `src/utils/dataHealth.test.js`. Run it
-after any change to those files.
+engine), `src/utils/naturalQuery.test.js` (Ask parsing, add/edit commands, and
+answer resolution), `src/utils/gedcom.test.js` (GEDCOM round-trip), and
+`src/utils/dataHealth.test.js`. Run it after any change to those files.
 
 Beyond the committed suite, the relationship engine (`familyUtils.js`,
 `naturalQuery.js`) is pure, dependency-light JS, so trickier cases are also
@@ -302,8 +315,9 @@ src/
     familyUtils.js             — the relationship engine (English + Tamil kinship
                                   logic, signatures, path-finding) — the core of the app
     naturalQuery.js            — Ask panel's question parsing + answer resolution
-                                  (relationship/attribute/count queries + add-person)
-    *.test.js                   — Vitest suites (familyUtils, naturalQuery, dataHealth)
+                                  (relationship/attribute/count queries + add/edit commands)
+    gedcom.js                   — GEDCOM import/export (INDI/FAM ↔ the app's data shape)
+    *.test.js                   — Vitest suites (familyUtils, naturalQuery, gedcom, dataHealth)
     dataHealth.js               — Data Health Check's consistency scan
     relationshipReference.js, tamilRelationshipTerms.js — reference data
     mapTiles.js, mapMarkers.js  — Family Map's tile/marker helpers

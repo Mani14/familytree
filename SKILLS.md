@@ -90,14 +90,20 @@ introduced it):
    ```
 
 > **Write intents are different from questions.** A command that *changes*
-> data (like `add-person` — "add Ravi as son of Kumar") must be detected by
-> strict LOCAL regex and resolved WITHOUT the AI Worker: short-circuit it at
+> data (like `add-person` — "add Ravi as son of Kumar", or the edit commands
+> "set X's job to …" / "mark X as deceased" / "X married Y") must be detected
+> by strict LOCAL regex and resolved WITHOUT the AI Worker: short-circuit it at
 > the top of BOTH `parseQuery` and `parseQueryAI` so the model can never
-> misroute an add into some other (read) intent, and only ever write after an
-> explicit on-screen confirm. See `parseAddCommand` and the `add-confirm` /
-> `add-done` result kinds in `naturalQuery.js` + `AskPanel.jsx` for the
-> reference implementation; the Worker's `add-person` shape exists only as a
-> future-proof backup, not the primary path.
+> misroute a write into some other (read) intent, and only ever write after an
+> explicit on-screen confirm. A statement command must also not swallow a
+> lookup — e.g. "who lives in Chennai" is a query, "Ravi lives in Chennai" is a
+> set-location command — hence the `QUESTION_OPENER` guard in
+> `parseEditCommand`. See `parseAddCommand`/`parseEditCommand` and the
+> `add-confirm`/`edit-confirm` → `*-done` result kinds in `naturalQuery.js` +
+> `AskPanel.jsx` for the reference implementation (the mutation runs OUTSIDE
+> the `setHistory` updater to avoid a setState-during-render warning); the
+> Worker's `add-person` shape exists only as a future-proof backup, not the
+> primary path.
 
 ## Deploy the Cloudflare Worker
 
