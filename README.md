@@ -6,6 +6,7 @@ alongside English ones, computed automatically from the tree structure rather
 than typed in by hand.
 
 Live at:
+- Custom domain: https://familyroots.co.in
 - Firebase Hosting: https://family-tree-3b760.web.app
 - GitHub Pages (mirror): https://mani14.github.io/familytree/
 
