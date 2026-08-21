@@ -77,6 +77,24 @@
   color: var(--color-text);
   cursor: pointer;
   transition: background var(--duration-fast) var(--ease);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.search-bar-result-name {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.search-bar-result-sub {
+  font-size: 11.5px;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 @media (hover: hover) {

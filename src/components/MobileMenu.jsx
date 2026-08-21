@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Compass, GitBranch, LogOut, Map, MessageCircleQuestion, Menu, ShieldAlert } from 'lucide-react';
+import { Compass, LogOut, Map, MessageCircleQuestion, Menu, ShieldAlert } from 'lucide-react';
 import ImportExport from './ImportExport';
 import '../styles/MobileMenu.css';
 
@@ -13,8 +13,6 @@ import '../styles/MobileMenu.css';
 // Portal + fixed positioning for the same reason as ImportExport's own dropdown:
 // an ancestor with `overflow-x: auto` would otherwise clip it.
 export default function MobileMenu({
-  viewMode,
-  onToggleViewMode,
   onOpenStats,
   onOpenFeatures,
   onOpenFamilyMap,
@@ -110,11 +108,8 @@ export default function MobileMenu({
                   label="Download"
                 />
               </div>
-              <button type="button" role="menuitem" onClick={() => { onToggleViewMode(); close(); }}>
-                <GitBranch size={15} /> {viewMode === 'forest' ? 'Lineage View' : 'Full Tree View'}
-              </button>
               <button type="button" role="menuitem" onClick={() => { onOpenFeatures(); close(); }}>
-                <Compass size={15} /> Demo
+                <Compass size={15} /> How to use app
               </button>
               {isAdmin && (
                 <button type="button" role="menuitem" onClick={() => { onOpenAdmin(); close(); }}>

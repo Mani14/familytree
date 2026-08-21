@@ -1,5 +1,5 @@
-import { useRef, useState } from 'react';
-import { Loader2, Route, Send } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Loader2, Mic, MicOff, Route, Send } from 'lucide-react';
 import { formatBirthdayNoYear, getDisplayName } from '../utils/familyUtils';
 import { parseQueryAI, resolveAnswer, substituteSelfReferences } from '../utils/naturalQuery';
 import Modal from './Modal';
@@ -27,7 +27,7 @@ function withArticle(word) {
   return /^[aeiou]/i.test(word) ? `an ${word}` : `a ${word}`;
 }
 
-function AnswerBody({ result, onGo, onShowTree, onResolveAmbiguous, onConfirmAdd }) {
+function AnswerBody({ result, onGo, onShowTree, onResolveAmbiguous, onConfirmAdd, onConfirmEdit }) {
   if (result.kind === 'pending') {
     return (
       <p className="ask-panel-pending">
@@ -172,6 +172,30 @@ function AnswerBody({ result, onGo, onShowTree, onResolveAmbiguous, onConfirmAdd
     );
   }
 
+  if (result.kind === 'edit-confirm') {
+    return (
+      <div className="ask-panel-answer ask-panel-confirm">
+        <p>{result.summary}</p>
+        <button type="button" className="ask-panel-confirm-yes" onClick={onConfirmEdit}>
+          Confirm
+        </button>
+      </div>
+    );
+  }
+
+  if (result.kind === 'edit-done') {
+    return (
+      <p className="ask-panel-meta">
+        {result.message}{' '}
+        {result.personId && (
+          <button type="button" className="ask-panel-name" onClick={() => onGo(result.personId)}>
+            View their card
+          </button>
+        )}
+      </p>
+    );
+  }
+
   if (result.kind === 'people') {
     const { people, summary, field } = result;
     // 'all' is a plain head-count — the summary line already says the number,
@@ -209,7 +233,7 @@ function AnswerBody({ result, onGo, onShowTree, onResolveAmbiguous, onConfirmAdd
 // `selfName` (the signed-in user's own first name, if linked) lets "my
 // cousins"/"related to me" resolve to an actual person — see
 // substituteSelfReferences.
-export default function AskPanel({ persons, isOpen, onClose, onSelectPerson, onShowConnection, selfName, onAddPerson }) {
+export default function AskPanel({ persons, isOpen, onClose, onSelectPerson, onShowConnection, selfName, onAddPerson, onEditPerson }) {
   const [query, setQuery] = useState('');
   const inputRef = useRef(null);
   // Most-recent-first session log — not persisted, just lets someone ask a
@@ -219,6 +243,12 @@ export default function AskPanel({ persons, isOpen, onClose, onSelectPerson, onS
   const [history, setHistory] = useState([]);
   const nextEntryId = useRef(0);
   const [pending, setPending] = useState(false);
+  const recognitionRef = useRef(null);
+  const [listening, setListening] = useState(false);
+  const voiceSupported = typeof window !== 'undefined' && !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+
+  // Stop any in-flight speech recognition if the panel unmounts.
+  useEffect(() => () => { try { recognitionRef.current?.stop(); } catch { /* already stopped */ } }, []);
 
   // Runs resolveAnswer defensively — no error boundary sits above this panel,
   // so an uncaught exception here would otherwise take the whole app down
@@ -278,12 +308,13 @@ export default function AskPanel({ persons, isOpen, onClose, onSelectPerson, onS
   // only ever happens HERE, on the explicit button press — never straight out
   // of parsing — and the entry flips to an 'add-done' result on success.
   const confirmAdd = (entryId) => {
-    setHistory((prev) => prev.map((entry) => {
-      if (entry.id !== entryId || entry.result.kind !== 'add-confirm') return entry;
-      const r = entry.result;
-      if (!onAddPerson) {
-        return { ...entry, result: { kind: 'error', message: 'Adding people isn’t available right now.' } };
-      }
+    const entry = history.find((e) => e.id === entryId);
+    if (!entry || entry.result.kind !== 'add-confirm') return;
+    const r = entry.result;
+    let result;
+    if (!onAddPerson) {
+      result = { kind: 'error', message: 'Adding people isn’t available right now.' };
+    } else {
       const partial = { firstName: r.firstName, gender: r.gender };
       if (r.lastName) partial.lastName = r.lastName;
       let newId;
@@ -291,14 +322,51 @@ export default function AskPanel({ persons, isOpen, onClose, onSelectPerson, onS
         newId = onAddPerson(r.action, r.target.id, partial);
       } catch (err) {
         console.error('AskPanel: add failed', err);
-        return { ...entry, result: { kind: 'error', message: 'Something went wrong adding that person.' } };
+        result = { kind: 'error', message: 'Something went wrong adding that person.' };
       }
-      if (!newId) {
-        return { ...entry, result: { kind: 'error', message: 'Couldn’t add that person — that relationship may already be filled.' } };
+      if (!result) {
+        if (!newId) {
+          result = { kind: 'error', message: 'Couldn’t add that person — that relationship may already be filled.' };
+        } else {
+          const fullName = [r.firstName, r.lastName].filter(Boolean).join(' ');
+          result = { kind: 'add-done', name: fullName, relationWord: r.relationWord, target: r.target, newId };
+        }
       }
-      const fullName = [r.firstName, r.lastName].filter(Boolean).join(' ');
-      return { ...entry, result: { kind: 'add-done', name: fullName, relationWord: r.relationWord, target: r.target, newId } };
-    }));
+    }
+    setHistory((prev) => prev.map((e) => (e.id === entryId ? { ...e, result } : e)));
+  };
+
+  // Commits an 'edit-confirm' preview via the parent's onEditPerson mutation —
+  // the mutation runs OUTSIDE the setHistory updater (calling a parent setState
+  // inside a state updater triggers a "setState during render" warning).
+  const confirmEdit = (entryId) => {
+    const entry = history.find((e) => e.id === entryId);
+    if (!entry || entry.result.kind !== 'edit-confirm') return;
+    const r = entry.result;
+    let result;
+    if (!onEditPerson) {
+      result = { kind: 'error', message: 'Editing isn’t available right now.' };
+    } else {
+      let payload;
+      if (r.op === 'set-field') payload = { personId: r.person.id, field: r.field, value: r.value };
+      else if (r.op === 'mark-deceased') payload = { personId: r.person.id, date: r.date };
+      else if (r.op === 'mark-alive') payload = { personId: r.person.id };
+      else if (r.op === 'set-married') payload = { personAId: r.personA.id, personBId: r.personB.id, date: r.date };
+      let ok;
+      try {
+        ok = onEditPerson(r.op, payload);
+      } catch (err) {
+        console.error('AskPanel: edit failed', err);
+        result = { kind: 'error', message: 'Something went wrong making that change.' };
+      }
+      if (!result) {
+        const personId = r.person?.id || r.personA?.id;
+        result = ok
+          ? { kind: 'edit-done', message: r.doneMessage || 'Done.', personId }
+          : { kind: 'error', message: 'Couldn’t make that change.' };
+      }
+    }
+    setHistory((prev) => prev.map((e) => (e.id === entryId ? { ...e, result } : e)));
   };
 
   const go = (id) => {
@@ -318,6 +386,39 @@ export default function AskPanel({ persons, isOpen, onClose, onSelectPerson, onS
     inputRef.current?.focus();
   };
 
+  // Browser on-device speech-to-text (Web Speech API) — free, no server, works
+  // offline on most mobiles. The live transcript fills the box; on a final
+  // result the question is asked automatically.
+  const toggleVoice = () => {
+    if (!voiceSupported || pending) return;
+    if (listening) { recognitionRef.current?.stop(); return; }
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const rec = new SR();
+    rec.lang = 'en-IN';
+    rec.interimResults = true;
+    rec.continuous = false;
+    let finalText = '';
+    rec.onresult = (e) => {
+      let interim = '';
+      for (let i = e.resultIndex; i < e.results.length; i += 1) {
+        const chunk = e.results[i][0].transcript;
+        if (e.results[i].isFinal) finalText += chunk; else interim += chunk;
+      }
+      setQuery(`${finalText}${interim}`.trim());
+    };
+    rec.onerror = () => setListening(false);
+    rec.onend = () => {
+      setListening(false);
+      recognitionRef.current = null;
+      const spoken = finalText.trim();
+      if (spoken) ask(spoken);
+    };
+    recognitionRef.current = rec;
+    setQuery('');
+    setListening(true);
+    try { rec.start(); } catch { setListening(false); }
+  };
+
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Ask About the Family" width="520px" className="ask-panel">
       <h2>Ask About the Family</h2>
@@ -327,15 +428,29 @@ export default function AskPanel({ persons, isOpen, onClose, onSelectPerson, onS
       </p>
 
       <form className="ask-panel-form" onSubmit={(e) => { e.preventDefault(); ask(query); }}>
-        <input
-          type="text"
-          ref={inputRef}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="How is Iniya related to Manikandan?"
-          disabled={pending}
-          autoFocus
-        />
+        <div className="ask-panel-input-wrap">
+          <input
+            type="text"
+            ref={inputRef}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="How is Iniya related to Manikandan?"
+            disabled={pending}
+            autoFocus
+          />
+          {voiceSupported && (
+            <button
+              type="button"
+              className={`ask-panel-mic${listening ? ' is-listening' : ''}`}
+              onClick={toggleVoice}
+              disabled={pending}
+              aria-label={listening ? 'Stop listening' : 'Ask by voice'}
+              title={listening ? 'Listening… tap to stop' : 'Ask by voice'}
+            >
+              {listening ? <MicOff size={15} /> : <Mic size={15} />}
+            </button>
+          )}
+        </div>
         <button type="submit" aria-label="Ask" title="Ask" disabled={pending}>
           {pending ? <Loader2 size={15} className="ask-panel-spinner" /> : <Send size={15} />}
         </button>
@@ -363,6 +478,7 @@ export default function AskPanel({ persons, isOpen, onClose, onSelectPerson, onS
                 onShowTree={showTree}
                 onResolveAmbiguous={(slot, personId) => resolveAmbiguous(entry.id, slot, personId)}
                 onConfirmAdd={() => confirmAdd(entry.id)}
+                onConfirmEdit={() => confirmEdit(entry.id)}
               />
             </li>
           ))}

@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { createEmptyPerson } from './familyUtils.js';
 import { parseAddCommand, parseQuery, resolveAnswer } from './naturalQuery.js';
-
 // Mirrors the app's stored record shape (see useFamily) so resolveAnswer sees
 // exactly what it does at runtime.
 function person(id, overrides = {}) {
@@ -147,5 +146,67 @@ describe('resolveAnswer add-person', () => {
     const persons = fixture();
     const res = resolveAnswer(persons, parseQuery('add Priya as wife of Solo'));
     expect(res).toMatchObject({ kind: 'add-confirm', action: 'spouse', gender: 'female' });
+  });
+});
+
+describe('edit commands', () => {
+  it('parses set-field variants', () => {
+    expect(parseQuery("set Kumar's job to teacher")).toMatchObject({ type: 'edit-person', op: 'set-field', field: 'work', value: 'teacher' });
+    expect(parseQuery('Meena lives in Chennai')).toMatchObject({ type: 'edit-person', op: 'set-field', field: 'location', value: 'Chennai' });
+    expect(parseQuery('Kumar works as an engineer')).toMatchObject({ type: 'edit-person', op: 'set-field', field: 'work', value: 'engineer' });
+    expect(parseQuery("change Meena's phone to 99999")).toMatchObject({ op: 'set-field', field: 'phone', value: '99999' });
+  });
+
+  it('parses and normalizes a date of birth', () => {
+    expect(parseQuery("set Kumar's dob to 14 June 1960")).toMatchObject({ op: 'set-field', field: 'dob', value: '1960-06-14' });
+    expect(parseQuery("set Kumar's birthday to 1960")).toMatchObject({ field: 'dob', value: '1960' });
+  });
+
+  it('parses deceased / alive / married commands', () => {
+    expect(parseQuery('mark Kumar as deceased')).toMatchObject({ op: 'mark-deceased' });
+    expect(parseQuery('Kumar passed away in 2020')).toMatchObject({ op: 'mark-deceased', date: '2020' });
+    expect(parseQuery('mark Kumar as alive')).toMatchObject({ op: 'mark-alive' });
+    expect(parseQuery('Solo married Priya on 2 Feb 2021')).toMatchObject({ op: 'set-married', nameA: 'Solo', nameB: 'Priya', date: '2021-02-02' });
+  });
+
+  it('does NOT treat questions as edit commands', () => {
+    expect(parseQuery('who lives in Chennai').type).not.toBe('edit-person');
+    expect(parseQuery('who works as a teacher').type).not.toBe('edit-person');
+    expect(parseQuery('who is Kumar married to').type).toBe('relation-list');
+  });
+
+  it('resolves set-field to an edit-confirm', () => {
+    const persons = fixture();
+    const res = resolveAnswer(persons, parseQuery("set Kumar's job to teacher"));
+    expect(res).toMatchObject({ kind: 'edit-confirm', op: 'set-field', field: 'work', value: 'teacher' });
+    expect(res.person.id).toBe('kumar');
+  });
+
+  it('resolves mark-deceased with a date', () => {
+    const persons = fixture();
+    const res = resolveAnswer(persons, parseQuery('mark Solo as deceased'));
+    expect(res).toMatchObject({ kind: 'edit-confirm', op: 'mark-deceased' });
+    expect(res.person.id).toBe('solo');
+  });
+
+  it('blocks marrying someone already married', () => {
+    const persons = fixture();
+    const res = resolveAnswer(persons, parseQuery('Kumar married Solo'));
+    expect(res.kind).toBe('error');
+    expect(res.message).toMatch(/already has a spouse/i);
+  });
+
+  it('confirms a marriage between two single people', () => {
+    const persons = fixture();
+    const res = resolveAnswer(persons, parseQuery('Solo married Ravi'), { nameB: 'ravi2' });
+    expect(res).toMatchObject({ kind: 'edit-confirm', op: 'set-married' });
+    expect([res.personA.id, res.personB.id].sort()).toEqual(['ravi2', 'solo']);
+  });
+
+  it('rejects an unreadable date of birth', () => {
+    const persons = fixture();
+    const res = resolveAnswer(persons, parseQuery("set Kumar's dob to sometime"));
+    expect(res.kind).toBe('error');
+    expect(res.message).toMatch(/date/i);
   });
 });

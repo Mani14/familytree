@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
-import { Clock, Languages, ShieldAlert, ShieldCheck, Trash2, UserCheck, UserPlus, Wand2 } from 'lucide-react';
+import { CalendarClock, Clock, Languages, ShieldAlert, ShieldCheck, Trash2, UserCheck, UserPlus, Wand2 } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { getFullName, getPerson } from '../utils/familyUtils';
 import ImportExport from './ImportExport';
@@ -24,6 +24,7 @@ export default function AdminPanel({
   onRequestReset,
   onOpenDataHealth,
   onOpenRelationshipRules,
+  onOpenTimeline,
   onFillMissingSurnames,
   onOpenMarriedSurnames,
   onOpenRecentActivity,
@@ -257,6 +258,14 @@ export default function AdminPanel({
         <p className="admin-muted">Review and manage the custom Tamil relationship-term corrections applied across the whole tree.</p>
         <button type="button" className="admin-secondary-btn" onClick={onOpenRelationshipRules}>
           <Languages size={14} /> Open Relationship Rules
+        </button>
+      </section>
+
+      <section className="admin-section">
+        <h3>Timeline</h3>
+        <p className="admin-muted">Browse the family's births, marriages, and deaths in chronological order.</p>
+        <button type="button" className="admin-secondary-btn" onClick={onOpenTimeline}>
+          <CalendarClock size={14} /> Open Timeline
         </button>
       </section>
 

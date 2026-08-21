@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowLeft, Check, Compass, GitBranch, Link2, LocateFixed, LogOut, Map, MessageCircleQuestion, Menu, PlayCircle, Redo2, Route, ShieldAlert, Sparkles, Undo2, X } from 'lucide-react';
+import { ArrowLeft, Check, Compass, Link2, LocateFixed, LogOut, Map, MessageCircleQuestion, Menu, PlayCircle, Redo2, Route, ShieldAlert, Sparkles, Undo2, X } from 'lucide-react';
 import { useFamily } from './hooks/useFamily';
 import { useAuth } from './hooks/useAuth';
 import { useAdmin } from './hooks/useAdmin';
@@ -46,6 +46,8 @@ const RecentActivityPanel = lazy(() => import('./components/RecentActivityPanel'
 const FeatureShowcase = lazy(() => import('./components/FeatureShowcase'));
 const RelationshipRulesPanel = lazy(() => import('./components/RelationshipRulesPanel'));
 const EditRelationshipDialog = lazy(() => import('./components/EditRelationshipDialog'));
+const TimelinePanel = lazy(() => import('./components/TimelinePanel'));
+const DescendantsPanel = lazy(() => import('./components/DescendantsPanel'));
 
 // Maps a formState.mode to the `relation` PersonForm/getEligibleLinkCandidates use.
 const RELATION_BY_MODE = { addParent: 'parent', addSpouse: 'spouse', addChild: 'child', addSibling: 'sibling' };
@@ -128,6 +130,8 @@ export default function App() {
   const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [showRelationshipRules, setShowRelationshipRules] = useState(false);
   const [showAskPanel, setShowAskPanel] = useState(false);
+  const [showTimeline, setShowTimeline] = useState(false);
+  const [descendantsRootId, setDescendantsRootId] = useState(null);
   // { personId, anchorId, signature, currentTerm, baseRelationship } while the
   // edit-relationship dialog is open, or null when closed.
   const [editRelationshipState, setEditRelationshipState] = useState(null);
@@ -423,6 +427,21 @@ export default function App() {
     if (action === 'sibling') return addSibling(targetId, partial);
     return null;
   }, [addChild, addSpouse, addParent, addSibling]);
+
+  // Applies an Ask-panel edit confirmation (set a field, mark deceased/living,
+  // record a marriage) via the same mutations the forms use. Returns whether it
+  // ran, which the panel turns into a done/couldn't-do message.
+  const handleAskEditPerson = useCallback((op, payload) => {
+    if (op === 'set-field') { updatePerson(payload.personId, { [payload.field]: payload.value }); return true; }
+    if (op === 'mark-deceased') { updatePerson(payload.personId, payload.date ? { isAlive: false, dod: payload.date } : { isAlive: false }); return true; }
+    if (op === 'mark-alive') { updatePerson(payload.personId, { isAlive: true }); return true; }
+    if (op === 'set-married') {
+      linkExisting(payload.personAId, 'spouse', payload.personBId);
+      if (payload.date) { updatePerson(payload.personAId, { marriageDate: payload.date }); updatePerson(payload.personBId, { marriageDate: payload.date }); }
+      return true;
+    }
+    return false;
+  }, [updatePerson, linkExisting]);
 
   // Opens the add-relative form directly from a tree node's quick-add menu.
   // `parentGender` ('father'|'mother') comes from the dedicated placeholder boxes
@@ -859,8 +878,8 @@ export default function App() {
           type="button"
           className="icon-btn desktop-header-item"
           onClick={() => setShowFeatureShowcase(true)}
-          aria-label="What this app can do"
-          title="Demo: what this app can do"
+          aria-label="How to use the app"
+          title="How to use the app"
         >
           <Compass size={17} />
         </button>
@@ -916,8 +935,6 @@ export default function App() {
         <SearchBar persons={persons} onLocate={handleLocatePerson} />
 
         <MobileMenu
-          viewMode={viewMode}
-          onToggleViewMode={() => setViewMode((m) => (m === 'forest' ? 'pedigree' : 'forest'))}
           onOpenStats={() => setShowStatsPanel(true)}
           onOpenFeatures={() => setShowFeatureShowcase(true)}
           onOpenFamilyMap={() => setShowFamilyMap(true)}
@@ -957,19 +974,6 @@ export default function App() {
             <button type="button" className="icon-btn" onClick={redo} disabled={!canRedo} aria-label="Redo" title="Redo (Ctrl+Y)">
               <Redo2 size={17} />
               <span className="btn-label">Redo</span>
-            </button>
-          </div>
-
-          <div className="app-header-group">
-            <button
-              type="button"
-              className="icon-btn"
-              onClick={() => setViewMode((m) => (m === 'forest' ? 'pedigree' : 'forest'))}
-              aria-label={viewMode === 'forest' ? 'Switch to Lineage View' : 'Switch to Full Tree View'}
-              title={viewMode === 'forest' ? 'Show ancestry + descendants for the focused person' : 'Show the full family forest'}
-            >
-              <GitBranch size={17} />
-              <span className="btn-label">{viewMode === 'forest' ? 'Lineage View' : 'Full Tree View'}</span>
             </button>
           </div>
 
@@ -1139,6 +1143,7 @@ export default function App() {
               overrides={relationshipOverrides}
               onEditRelationship={isAdmin ? handleEditRelationship : undefined}
               onShowOurLink={meId ? (id) => runConnection(meId, id) : undefined}
+              onViewDescendants={(id) => setDescendantsRootId(id)}
             />
           )}
         </AnimatePresence>
@@ -1220,6 +1225,20 @@ export default function App() {
 
       <StatsPanel persons={persons} isOpen={showStatsPanel} onClose={() => setShowStatsPanel(false)} onSelect={handleLocatePerson} />
 
+      <Suspense fallback={null}>
+        <TimelinePanel persons={persons} isOpen={showTimeline} onClose={() => setShowTimeline(false)} onSelect={handleLocatePerson} />
+      </Suspense>
+
+      <Suspense fallback={null}>
+        <DescendantsPanel
+          persons={persons}
+          rootId={descendantsRootId}
+          isOpen={!!descendantsRootId}
+          onClose={() => setDescendantsRootId(null)}
+          onSelect={handleViewPersonDetails}
+        />
+      </Suspense>
+
       <AskPanel
         persons={persons}
         isOpen={showAskPanel}
@@ -1228,6 +1247,7 @@ export default function App() {
         onShowConnection={runConnection}
         selfName={getPerson(persons, meId)?.firstName}
         onAddPerson={handleAskAddPerson}
+        onEditPerson={handleAskEditPerson}
       />
 
       {/* Suspense fallback is never actually visible in practice — showFamilyMap only
@@ -1306,6 +1326,7 @@ export default function App() {
             onRequestReset={handleRequestReset}
             onOpenDataHealth={() => setShowDataHealth(true)}
             onOpenRelationshipRules={() => setShowRelationshipRules(true)}
+            onOpenTimeline={() => setShowTimeline(true)}
             onFillMissingSurnames={handleFillMissingSurnames}
             onOpenMarriedSurnames={() => setShowMarriedSurnames(true)}
             onOpenRecentActivity={() => setShowRecentActivity(true)}

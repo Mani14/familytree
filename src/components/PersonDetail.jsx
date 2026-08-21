@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion, Reorder, useDragControls } from 'framer-motion';
-import { BadgeCheck, Baby, Briefcase, Cake, ChevronDown, ChevronUp, Clock, Eye, GitBranch, GripVertical, HeartHandshake, Mail, MapPin, Pencil, Phone, Route, Sparkles, Trash2, UserPlus, Users, X, XCircle } from 'lucide-react';
+import { BadgeCheck, Baby, Briefcase, Cake, ChevronDown, ChevronUp, Clock, Eye, GitBranch, GripVertical, HeartHandshake, Mail, MapPin, Network, Pencil, Phone, Route, Sparkles, Trash2, UserPlus, Users, X, XCircle } from 'lucide-react';
 import {
   formatBirthdayNoYear,
   formatDateDisplay,
@@ -206,6 +206,7 @@ export default function PersonDetail({
   overrides = [],
   onEditRelationship,
   onShowOurLink,
+  onViewDescendants,
 }) {
   const [showWhy, setShowWhy] = useState(false);
   if (!person) return null;
@@ -453,6 +454,9 @@ export default function PersonDetail({
         )}
         {onFindConnection && (
           <button type="button" onClick={() => onFindConnection(person.id)}><Route size={14} /> Find Connection</button>
+        )}
+        {children.length > 0 && onViewDescendants && (
+          <button type="button" onClick={() => onViewDescendants(person.id)}><Network size={14} /> Descendants</button>
         )}
         {onSetMe && (
           <button

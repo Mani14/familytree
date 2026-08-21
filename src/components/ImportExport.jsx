@@ -3,11 +3,13 @@ import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ChevronDown, Download, FileImage, FileText, Upload } from 'lucide-react';
 import { validateFamilyData } from '../utils/familyUtils';
+import { exportGedcom, parseGedcom } from '../utils/gedcom';
 import ConfirmDialog from './ConfirmDialog';
 import '../styles/ImportExport.css';
 
 export default function ImportExport({ exportData, onImport, onExportImage, onExportPDF, label = 'Data' }) {
   const fileInputRef = useRef(null);
+  const gedFileInputRef = useRef(null);
   const triggerRef = useRef(null);
   const menuRef = useRef(null);
   const [error, setError] = useState('');
@@ -61,6 +63,50 @@ export default function ImportExport({ exportData, onImport, onExportImage, onEx
     setError('');
     setOpen(false);
     fileInputRef.current?.click();
+  };
+
+  const downloadBlob = (contents, filename, type) => {
+    const blob = new Blob([contents], { type });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleGedcomExport = () => {
+    downloadBlob(exportGedcom(exportData()), 'family.ged', 'text/plain;charset=utf-8');
+    setOpen(false);
+  };
+
+  const handleGedcomImportClick = () => {
+    setError('');
+    setOpen(false);
+    gedFileInputRef.current?.click();
+  };
+
+  const handleGedFileChange = (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      let parsed;
+      try {
+        parsed = parseGedcom(reader.result);
+      } catch {
+        setError('That file could not be read as GEDCOM.');
+        return;
+      }
+      const { valid, error: validationError } = validateFamilyData(parsed);
+      if (!valid) {
+        setError(`GEDCOM imported but looks off: ${validationError}`);
+        return;
+      }
+      setPendingImport(parsed);
+    };
+    reader.readAsText(file);
   };
 
   const handleFileChange = (e) => {
@@ -129,6 +175,12 @@ export default function ImportExport({ exportData, onImport, onExportImage, onEx
             <button type="button" role="menuitem" onClick={handleImportClick}>
               <Upload size={15} /> Import JSON
             </button>
+            <button type="button" role="menuitem" onClick={handleGedcomExport}>
+              <Download size={15} /> Export GEDCOM
+            </button>
+            <button type="button" role="menuitem" onClick={handleGedcomImportClick}>
+              <Upload size={15} /> Import GEDCOM
+            </button>
             {onExportImage && (
               <button type="button" role="menuitem" onClick={() => { onExportImage(); setOpen(false); }}>
                 <FileImage size={15} /> Export Image
@@ -150,6 +202,13 @@ export default function ImportExport({ exportData, onImport, onExportImage, onEx
         type="file"
         accept="application/json"
         onChange={handleFileChange}
+        style={{ display: 'none' }}
+      />
+      <input
+        ref={gedFileInputRef}
+        type="file"
+        accept=".ged,.gedcom,text/plain"
+        onChange={handleGedFileChange}
         style={{ display: 'none' }}
       />
       {error && <span className="import-export-error" title={error}>{error}</span>}

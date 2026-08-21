@@ -6,6 +6,17 @@ import '../styles/SearchBar.css';
 
 const MAX_RESULTS = 8;
 
+// A one-line "1990 · Teacher · Chennai" hint under each result, so searching by
+// job or place makes it obvious why someone matched.
+const resultSubtext = (p) => {
+  const bits = [];
+  const year = (p.dob || '').slice(0, 4);
+  if (year) bits.push(year);
+  if (p.work) bits.push(p.work);
+  if (p.location) bits.push(p.location.split(',')[0].trim());
+  return bits.join(' · ');
+};
+
 export default function SearchBar({ persons, onLocate }) {
   const [query, setQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
@@ -15,7 +26,11 @@ export default function SearchBar({ persons, onLocate }) {
     const term = query.trim().toLowerCase();
     if (!term) return [];
     return Object.values(persons)
-      .filter((person) => getDisplayName(person).toLowerCase().includes(term))
+      .filter((person) => {
+        if (person.isPlaceholder) return false;
+        const hay = `${getDisplayName(person)} ${person.work || ''} ${person.location || ''}`.toLowerCase();
+        return hay.includes(term);
+      })
       .slice(0, MAX_RESULTS);
   }, [persons, query]);
 
@@ -43,7 +58,7 @@ export default function SearchBar({ persons, onLocate }) {
         ref={inputRef}
         type="text"
         className="search-bar-input"
-        placeholder="Search by name…"
+        placeholder="Search by name, job, or place…"
         value={query}
         onChange={(e) => {
           setQuery(e.target.value);
@@ -75,7 +90,8 @@ export default function SearchBar({ persons, onLocate }) {
                     }}
                     title="Focus this person"
                   >
-                    {getDisplayName(person)}
+                    <span className="search-bar-result-name">{getDisplayName(person)}</span>
+                    {resultSubtext(person) && <span className="search-bar-result-sub">{resultSubtext(person)}</span>}
                   </button>
                 </li>
               ))

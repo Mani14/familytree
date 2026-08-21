@@ -240,6 +240,106 @@ function looksLikeAddAttempt(raw) {
     || /\badd\s+(?:a\s+)?(?:new\s+)?(?:person|member|someone|somebody|relative|people)\b/i.test(text);
 }
 
+// --- Edit-an-existing-person commands --------------------------------------
+// The OTHER write intents (beyond add-person): set a field, mark deceased/alive,
+// or record a marriage between two existing people. Like add-person these are
+// detected by strict LOCAL regex, never routed to the AI, and only ever write
+// after an on-screen confirm (see AskPanel's edit-confirm/edit-done). A subject
+// that reads like a question opener (who/how many/…) is rejected so a lookup is
+// never mistaken for a command.
+const QUESTION_OPENER = /^(?:who|whos|whose|what|which|when|where|how|is\s+there|are\s+there|anyone|anybody|everyone|everybody|somebody|someone|people|list|show|find|name|does|do|did|can|could)\b/i;
+
+const EDIT_FIELDS = {
+  job: 'work', 'job title': 'work', work: 'work', occupation: 'work', profession: 'work',
+  location: 'location', place: 'location', home: 'location', city: 'location', town: 'location', address: 'location', residence: 'location',
+  phone: 'phone', mobile: 'phone', number: 'phone', 'phone number': 'phone',
+  email: 'email', 'email address': 'email', mail: 'email',
+  note: 'notes', notes: 'notes',
+  dob: 'dob', birthday: 'dob', born: 'dob', birthdate: 'dob', 'birth date': 'dob', 'date of birth': 'dob',
+};
+
+const EDIT_FIELD_LABEL = { work: 'job', location: 'location', phone: 'phone number', email: 'email', notes: 'notes', dob: 'date of birth' };
+
+const MONTHS_FULL = {
+  january: 1, february: 2, march: 3, april: 4, may: 5, june: 6, july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
+  jan: 1, feb: 2, mar: 3, apr: 4, jun: 6, jul: 7, aug: 8, sep: 9, sept: 9, oct: 10, nov: 11, dec: 12,
+};
+const pad2 = (n) => String(Number(n)).padStart(2, '0');
+
+// Parses a human-typed date to the app's ISO-ish shape ("YYYY-MM-DD" | "YYYY-MM"
+// | "YYYY"). Day-first for numeric slashes (Indian convention). '' if unreadable.
+export function parseHumanDate(raw) {
+  const s = (raw || '').trim().toLowerCase().replace(/(\d+)(?:st|nd|rd|th)\b/g, '$1').replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!s) return '';
+  let m = /^(\d{4})(?:-(\d{1,2}))?(?:-(\d{1,2}))?$/.exec(s);
+  if (m) return m[3] && m[2] ? `${m[1]}-${pad2(m[2])}-${pad2(m[3])}` : m[2] ? `${m[1]}-${pad2(m[2])}` : m[1];
+  m = /^(\d{1,2})\s+([a-z]+)\s+(\d{4})$/.exec(s);
+  if (m && MONTHS_FULL[m[2]]) return `${m[3]}-${pad2(MONTHS_FULL[m[2]])}-${pad2(m[1])}`;
+  m = /^([a-z]+)\s+(\d{1,2})\s+(\d{4})$/.exec(s);
+  if (m && MONTHS_FULL[m[1]]) return `${m[3]}-${pad2(MONTHS_FULL[m[1]])}-${pad2(m[2])}`;
+  m = /^([a-z]+)\s+(\d{4})$/.exec(s);
+  if (m && MONTHS_FULL[m[1]]) return `${m[2]}-${pad2(MONTHS_FULL[m[1]])}`;
+  m = /^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})$/.exec(s);
+  if (m) return `${m[3]}-${pad2(m[2])}-${pad2(m[1])}`;
+  return '';
+}
+
+const cleanName = (s) => (s || '').trim().replace(/[?.!,]+$/, '').trim();
+
+function buildSetField(name, field, value) {
+  const n = cleanName(name);
+  let v = (value || '').trim().replace(/[?.!,]+$/, '').trim();
+  if (!n || !v) return null;
+  if (field === 'dob') {
+    const iso = parseHumanDate(v);
+    return { type: 'edit-person', op: 'set-field', name: n, field, value: iso, badDate: !iso };
+  }
+  return { type: 'edit-person', op: 'set-field', name: n, field, value: v };
+}
+
+export function parseEditCommand(raw) {
+  const text = (raw || '').trim().replace(/[‘’]/g, "'").replace(/[?!.]+$/, '').trim();
+  if (!text) return null;
+
+  // "X married Y [on/in <date>]" / "mark X married to Y"
+  let m = /^(?:mark\s+)?(.+?)\s+(?:married|is\s+married\s+to|got\s+married\s+to|wed|wedded)\s+(.+?)(?:\s+(?:on|in)\s+(.+))?$/i.exec(text);
+  if (m && !QUESTION_OPENER.test(m[1].trim())) {
+    const nameA = cleanName(m[1]);
+    const nameB = cleanName(m[2]);
+    if (nameA && nameB) return { type: 'edit-person', op: 'set-married', nameA, nameB, date: parseHumanDate(m[3] || '') };
+  }
+
+  // Deceased
+  m = /^mark\s+(.+?)\s+as\s+(?:deceased|dead|late|no\s+longer\s+(?:with\s+us|alive|living))$/i.exec(text)
+    || /^(.+?)\s+(?:has\s+)?(?:passed\s+away|passed\s+on|is\s+deceased|is\s+dead|is\s+late|is\s+no\s+longer\s+with\s+us|died|expired)(?:\s+(?:on|in)\s+(.+))?$/i.exec(text);
+  if (m && !QUESTION_OPENER.test(m[1].trim())) {
+    return { type: 'edit-person', op: 'mark-deceased', name: cleanName(m[1]), date: parseHumanDate(m[2] || '') };
+  }
+
+  // Alive
+  m = /^mark\s+(.+?)\s+as\s+(?:alive|living|not\s+deceased)$/i.exec(text)
+    || /^(.+?)\s+is\s+(?:alive|living|still\s+alive|still\s+living)$/i.exec(text);
+  if (m && !QUESTION_OPENER.test(m[1].trim())) {
+    return { type: 'edit-person', op: 'mark-alive', name: cleanName(m[1]) };
+  }
+
+  // Explicit "set/change/update X's <field> to <value>"
+  m = /^(?:set|change|update)\s+(.+?)(?:'s)?\s+(job\s+title|date\s+of\s+birth|birth\s*date|phone\s+number|email\s+address|job|work|occupation|profession|location|place|home|city|town|address|residence|phone|mobile|number|email|mail|notes?|dob|birthday|born|birthdate)\s+(?:to|as|=|:)\s+(.+)$/i.exec(text);
+  if (m) {
+    const field = EDIT_FIELDS[m[2].trim().toLowerCase().replace(/\s+/g, ' ')];
+    if (field) return buildSetField(m[1], field, m[3]);
+  }
+
+  // Natural statements with a named subject
+  m = /^(.+?)\s+(?:lives?|stays?|resides?|is\s+based)\s+(?:in|at|near)\s+(.+)$/i.exec(text);
+  if (m && !QUESTION_OPENER.test(m[1].trim())) return buildSetField(m[1], 'location', m[2]);
+
+  m = /^(.+?)\s+works?\s+as\s+(?:an?\s+)?(.+)$/i.exec(text);
+  if (m && !QUESTION_OPENER.test(m[1].trim())) return buildSetField(m[1], 'work', m[2]);
+
+  return null;
+}
+
 // Best-effort LOCAL classifier for attribute/count questions — the AI Worker
 // understands far more phrasings; this is the offline/fallback path. Returns
 // null when nothing matches, so parseQuery falls through to 'unknown'.
@@ -332,6 +432,11 @@ export function parseQuery(raw) {
   // A clear-but-incomplete add ("add a new person") gets its own guidance
   // rather than falling through to the generic "didn't understand" help.
   if (looksLikeAddAttempt(text)) return { type: 'add-incomplete' };
+
+  // Other write commands (set a field, mark deceased/married) — also before the
+  // question patterns, so "set X's job to Y" isn't misread as a possessive lookup.
+  const editCmd = parseEditCommand(text);
+  if (editCmd) return editCmd;
 
   let m = /^how\s+(?:is|are)\s+(.+?)\s+related\s+to\s+(.+)$/i.exec(text);
   if (m) return { type: 'relation-between', nameA: m[1], nameB: m[2] };
@@ -435,6 +540,9 @@ export async function parseQueryAI(raw) {
   // An incomplete add is resolved locally too — never sent to the Worker, which
   // would just classify it as a generic 'meta' question and lose the intent.
   if (looksLikeAddAttempt(text)) return { type: 'add-incomplete' };
+  // Edit/set commands also WRITE, so they stay local and never hit the Worker.
+  const editCmd = parseEditCommand(text);
+  if (editCmd) return editCmd;
   try {
     const aiResult = await withDeadline(callAskWorker(text), AI_TIMEOUT_MS);
     // If the Worker didn't produce a concrete, actionable intent — it gave up
@@ -480,7 +588,7 @@ const HELP_MESSAGE =
 // relationship) — describes scope and what data actually exists, so someone
 // asking "what can you do" gets a real answer instead of a rejection.
 const META_MESSAGE =
-  "I can answer questions about this family tree: \"How is X related to Y?\" (their relationship, in Tamil and English, plus a button to replay it on the tree), \"Who are X's cousins/children/siblings/etc?\", \"Whose birthday is coming up next?\", and questions about recorded details — jobs (\"who works as a teacher?\"), places (\"who lives in Chennai?\"), counts (\"how many people are in the tree?\"), or by gender, living/deceased, birth year, or name. I can also add someone new — e.g. \"add Ravi as son of Kumar\" or \"add a daughter named Priya to Meena\" — and I'll show a confirm button before saving. I only know what's recorded here — names, gender, birth/death dates, parents, children, marriages, jobs, and places.";
+  "I can answer questions about this family tree: \"How is X related to Y?\" (their relationship, in Tamil and English, plus a button to replay it on the tree), \"Who are X's cousins/children/siblings/etc?\", \"Whose birthday is coming up next?\", and questions about recorded details — jobs (\"who works as a teacher?\"), places (\"who lives in Chennai?\"), counts (\"how many people are in the tree?\"), or by gender, living/deceased, birth year, or name. I can also add someone new — e.g. \"add Ravi as son of Kumar\" or \"add a daughter named Priya to Meena\" — and make simple edits — \"set Ravi's job to teacher\", \"Ravi lives in Chennai\", \"mark Kumar as deceased\", or \"Ravi married Priya\" — always with a confirm button before saving. I only know what's recorded here — names, gender, birth/death dates, parents, children, marriages, jobs, and places.";
 
 // Shown when someone clearly wants to add a person but hasn't said who or how
 // they connect — points them at the full phrasing rather than the generic help.
@@ -610,6 +718,63 @@ export function resolveAnswer(persons, parsed, chosen = {}) {
       lastName,
       gender: parsed.gender || 'other',
     };
+  }
+
+  if (parsed.type === 'edit-person') {
+    const { op } = parsed;
+
+    if (op === 'set-married') {
+      const aMatches = resolveNameSlot(persons, parsed.nameA, chosen.nameA);
+      if (!aMatches.length) return { kind: 'error', message: `I couldn't find anyone named "${parsed.nameA.trim()}".` };
+      if (aMatches.length > 1) return { kind: 'ambiguous', slot: 'nameA', term: parsed.nameA, candidates: aMatches };
+      const bMatches = resolveNameSlot(persons, parsed.nameB, chosen.nameB);
+      if (!bMatches.length) return { kind: 'error', message: `I couldn't find anyone named "${parsed.nameB.trim()}".` };
+      if (bMatches.length > 1) return { kind: 'ambiguous', slot: 'nameB', term: parsed.nameB, candidates: bMatches };
+      const a = aMatches[0];
+      const b = bMatches[0];
+      if (a.id === b.id) return { kind: 'error', message: "That's the same person." };
+      if (a.spouseId && a.spouseId !== b.id) return { kind: 'error', message: `${getDisplayName(a)} already has a spouse recorded.` };
+      if (b.spouseId && b.spouseId !== a.id) return { kind: 'error', message: `${getDisplayName(b)} already has a spouse recorded.` };
+      const when = parsed.date ? ` (married ${parsed.date})` : '';
+      return {
+        kind: 'edit-confirm',
+        op,
+        personA: a,
+        personB: b,
+        date: parsed.date,
+        summary: `Record that ${getDisplayName(a)} and ${getDisplayName(b)} are married${when}?`,
+        doneMessage: `Recorded ${getDisplayName(a)} and ${getDisplayName(b)} as married.`,
+      };
+    }
+
+    const matches = resolveNameSlot(persons, parsed.name, chosen.name);
+    if (!matches.length) return { kind: 'error', message: `I couldn't find anyone named "${parsed.name.trim()}".` };
+    if (matches.length > 1) return { kind: 'ambiguous', slot: 'name', term: parsed.name, candidates: matches };
+    const person = matches[0];
+
+    if (op === 'mark-deceased') {
+      const when = parsed.date ? ` (died ${parsed.date})` : '';
+      return { kind: 'edit-confirm', op, person, date: parsed.date, summary: `Mark ${getDisplayName(person)} as deceased${when}?`, doneMessage: `Marked ${getDisplayName(person)} as deceased.` };
+    }
+    if (op === 'mark-alive') {
+      return { kind: 'edit-confirm', op, person, summary: `Mark ${getDisplayName(person)} as living?`, doneMessage: `Marked ${getDisplayName(person)} as living.` };
+    }
+    if (op === 'set-field') {
+      if (parsed.field === 'dob' && (parsed.badDate || !parsed.value)) {
+        return { kind: 'error', message: "I couldn't read that date — try something like \"14 June 1990\" or \"1990\"." };
+      }
+      const label = EDIT_FIELD_LABEL[parsed.field] || parsed.field;
+      return {
+        kind: 'edit-confirm',
+        op,
+        person,
+        field: parsed.field,
+        value: parsed.value,
+        summary: `Set ${getDisplayName(person)}'s ${label} to "${parsed.value}"?`,
+        doneMessage: `Updated ${getDisplayName(person)}'s ${label}.`,
+      };
+    }
+    return { kind: 'error', message: `I didn't understand that. ${HELP_MESSAGE}` };
   }
 
   if (parsed.type === 'attribute-query') {

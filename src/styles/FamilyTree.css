@@ -418,7 +418,7 @@
    connector line coming into their top (their parents live in another tree). */
 .mini-card-jump {
   position: absolute;
-  top: -18px;
+  top: -20px;
   left: 50%;
   transform: translateX(-50%);
   display: inline-flex;
