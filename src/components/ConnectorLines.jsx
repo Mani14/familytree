@@ -78,7 +78,13 @@ const HIGHLIGHT_STROKE = {
 export default function ConnectorLines({ links, width, height, highlightedLinks, revealIndex = -1, transitionMs }) {
   if (!links.length) return null;
 
-  const d = pathFor(links);
+  // Cross-family parentage lines (long, canvas-spanning) are drawn dotted so they
+  // read as a secondary link rather than normal parentage — see useTreeLayout.
+  const baseLinks = links.filter((l) => !l.isCrossLink);
+  const crossLinks = links.filter((l) => l.isCrossLink);
+
+  const d = pathFor(baseLinks);
+  const crossD = crossLinks.length ? pathFor(crossLinks) : '';
   const traveling = revealIndex >= 0 && highlightedLinks?.length > 0;
   // Entries can be `null` — a segment that lived in a view we've since jumped away
   // from (see FamilyTree's highlightedLinks) — filtered out here since there's
@@ -98,6 +104,17 @@ export default function ConnectorLines({ links, width, height, highlightedLinks,
       style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', overflow: 'visible' }}
     >
       <path d={d} fill="none" stroke="var(--color-connector)" strokeWidth="2.5" strokeLinecap="round" />
+      {crossD && (
+        <path
+          d={crossD}
+          fill="none"
+          stroke="var(--color-connector)"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeDasharray="1 8"
+          opacity="0.75"
+        />
+      )}
       {settledD && <path key="settled" d={settledD} {...HIGHLIGHT_STROKE} />}
       {currentD && (
         <DrawnPath key={`current-${revealIndex}`} d={currentD} durationMs={transitionMs ?? 220} {...HIGHLIGHT_STROKE} />
