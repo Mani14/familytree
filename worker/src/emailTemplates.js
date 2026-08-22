@@ -1,21 +1,14 @@
-// Email HTML uses inline styles throughout, not a <style> block or external
-// CSS — most email clients (Gmail, Outlook) strip <style> tags or support
-// them inconsistently, so every rule that matters has to live on the element
-// itself. SVG images are deliberately avoided entirely: Gmail, Outlook, and
-// Yahoo all fail to render inline SVG (shows a broken-image icon), so the
-// "cake with a name on it" effect is built from a plain emoji (which Gmail/
-// Apple Mail render as real colorful glyphs, no image file needed) plus a
-// styled text banner underneath, rather than text baked into image pixels.
+// Deliberately plain, personal-looking HTML (inline styles only — Gmail/Outlook
+// strip <style> blocks): a simple text note with a normal text link, NOT a
+// gradient banner + emoji + big CTA button. Those "marketing" signals are exactly
+// what pushed this into Gmail's Promotions tab; a plainer, letter-style email is
+// far more likely to land in Primary.
 
-const CARD_STYLE = 'max-width:420px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #f0d9e4;font-family:Georgia,\'Times New Roman\',serif;';
-const HEADER_STYLE = 'background:linear-gradient(135deg,#f472b6,#a855f7);padding:28px 20px;text-align:center;';
-const BODY_STYLE = 'padding:28px 24px;text-align:center;color:#4b3350;';
-const NAME_BANNER_STYLE = 'display:inline-block;margin:8px 0 18px;padding:8px 22px;background:#fdf0f6;border:2px dashed #e879b9;border-radius:999px;font-size:22px;font-weight:bold;color:#a3266b;';
-const BUTTON_STYLE = 'display:inline-block;margin-top:8px;padding:12px 28px;background:#a855f7;color:#ffffff;text-decoration:none;border-radius:999px;font-weight:bold;font-size:14px;font-family:Georgia,serif;';
-const WRAPPER_STYLE = 'background:#fbeff5;padding:32px 16px;';
+const CONTAINER_STYLE = "max-width:480px;margin:0 auto;padding:8px 16px;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#222222;";
+const LINK_STYLE = 'color:#1a56db;';
 
 function wrap(innerHtml) {
-  return `<div style="${WRAPPER_STYLE}"><div style="${CARD_STYLE}">${innerHtml}</div></div>`;
+  return `<div style="${CONTAINER_STYLE}">${innerHtml}</div>`;
 }
 
 // Names come from person records anyone in the family can edit — escaping
@@ -29,37 +22,22 @@ function escapeHtml(s) {
 export function birthdayPersonEmail({ firstName: rawFirstName, appUrl }) {
   const firstName = escapeHtml(rawFirstName);
   const html = wrap(`
-    <div style="${HEADER_STYLE}">
-      <div style="font-size:48px;line-height:1;">🎂🎉</div>
-      <div style="font-size:22px;font-weight:bold;color:#ffffff;margin-top:8px;">Happy Birthday!</div>
-    </div>
-    <div style="${BODY_STYLE}">
-      <div style="${NAME_BANNER_STYLE}">🎈 ${firstName} 🎈</div>
-      <p style="font-size:15px;line-height:1.6;margin:0 0 20px;">
-        Wishing you a wonderful day, ${firstName}! Your family is thinking of
-        you today.
-      </p>
-      <a href="${appUrl}" style="${BUTTON_STYLE}">🌳 Open Family Tree</a>
-    </div>
+    <p>Hi ${firstName},</p>
+    <p>Wishing you a very happy birthday! Your family is thinking of you today.</p>
+    <p>You can open the family tree here: <a href="${appUrl}" style="${LINK_STYLE}">${appUrl}</a></p>
+    <p>&mdash; Family Tree</p>
   `);
-  return { subject: `🎉 Happy Birthday, ${rawFirstName}!`, html };
+  return { subject: `Happy birthday, ${rawFirstName}`, html };
 }
 
 export function birthdayNotifyEmail({ firstName: rawFirstName, lastName: rawLastName, appUrl }) {
   const firstName = escapeHtml(rawFirstName);
   const fullName = [firstName, escapeHtml(rawLastName)].filter(Boolean).join(' ');
   const html = wrap(`
-    <div style="${HEADER_STYLE}">
-      <div style="font-size:48px;line-height:1;">🎂🥳</div>
-      <div style="font-size:22px;font-weight:bold;color:#ffffff;margin-top:8px;">Today's the Day!</div>
-    </div>
-    <div style="${BODY_STYLE}">
-      <div style="${NAME_BANNER_STYLE}">🎈 ${fullName} 🎈</div>
-      <p style="font-size:15px;line-height:1.6;margin:0 0 20px;">
-        Today is <strong>${fullName}</strong>'s birthday!
-      </p>
-      <a href="${appUrl}" style="${BUTTON_STYLE}">🌳 Open Family Tree</a>
-    </div>
+    <p>Hi,</p>
+    <p>Today is ${fullName}'s birthday. Do take a moment to wish them!</p>
+    <p>You can open the family tree here: <a href="${appUrl}" style="${LINK_STYLE}">${appUrl}</a></p>
+    <p>&mdash; Family Tree</p>
   `);
-  return { subject: `🎂 Today is ${rawFirstName}'s birthday`, html };
+  return { subject: `Today is ${rawFirstName}'s birthday`, html };
 }
