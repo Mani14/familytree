@@ -409,9 +409,6 @@ export function computeForestLayout(
         fromY: parentNode.y + AVATAR_TOP + AVATAR_SIZE,
         toX: childX,
         toY: childNode.y + AVATAR_TOP,
-        // A cross-family parentage line can span the whole canvas and slice across
-        // unrelated families; ConnectorLines hides it until an endpoint is active.
-        isCrossLink: true,
       });
     }
   });
