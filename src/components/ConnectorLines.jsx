@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { NODE_H } from '../hooks/useTreeLayout';
+import { NODE_H, NODE_W } from '../hooks/useTreeLayout';
 
 function pathFor(links) {
   return links
@@ -78,10 +78,13 @@ const HIGHLIGHT_STROKE = {
 export default function ConnectorLines({ links, width, height, highlightedLinks, revealIndex = -1, transitionMs }) {
   if (!links.length) return null;
 
-  // Cross-family parentage lines (long, canvas-spanning) are drawn dotted so they
-  // read as a secondary link rather than normal parentage — see useTreeLayout.
-  const baseLinks = links.filter((l) => !l.isCrossLink);
-  const crossLinks = links.filter((l) => l.isCrossLink);
+  // Only cross-family parentage lines that run a long way HORIZONTALLY (cutting
+  // across unrelated families, e.g. someone who's a child on one side and married
+  // in on the far side) are dotted. A married-in person whose own parents sit
+  // nearby keeps a normal solid line like any other parentage.
+  const isLongCross = (l) => l.isCrossLink && Math.abs(l.fromX - l.toX) > NODE_W * 3;
+  const baseLinks = links.filter((l) => !isLongCross(l));
+  const crossLinks = links.filter(isLongCross);
 
   const d = pathFor(baseLinks);
   const crossD = crossLinks.length ? pathFor(crossLinks) : '';
