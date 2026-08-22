@@ -8,8 +8,11 @@
 // Microsoft now recommend, which may affect spam-folder placement but not
 // whether the send succeeds. Swap FROM_ADDRESS for a verified custom domain
 // later if deliverability becomes an actual problem.
+// Sends from the Brevo-authenticated custom domain (familyroots.co.in), so DKIM
+// and DMARC align with the From domain — the freemail sender it replaced
+// (@gmail.com via Brevo) couldn't align, which hurt inbox/Primary placement.
 const FROM_NAME = 'Family Tree';
-const FROM_EMAIL = 'manikandan.ks.14@gmail.com';
+const FROM_EMAIL = 'noreply@familyroots.co.in';
 
 export async function sendEmail(env, { to, subject, html }) {
   const res = await fetch('https://api.brevo.com/v3/smtp/email', {
