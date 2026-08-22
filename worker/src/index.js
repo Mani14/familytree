@@ -3,7 +3,7 @@ import { getDocument, listDocuments } from './firestore.js';
 import { sendEmail } from './email.js';
 import { birthdayPersonEmail, birthdayNotifyEmail } from './emailTemplates.js';
 
-const APP_URL = 'https://family-tree-3b760.web.app';
+const APP_URL = 'https://familyroots.co.in/';
 const FIREBASE_PROJECT_ID = 'family-tree-3b760';
 const FIREBASE_CERTS_URL = 'https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com';
 // Groq's available model lineup changes over time — llama-3.1-8b-instant
@@ -167,6 +167,31 @@ async function runBirthdayJob(env) {
   }
 }
 
+// Manually broadcast ONE person's birthday to every signed-in user — the same
+// "today is X's birthday" email the daily job sends, but for a single chosen
+// person on demand (e.g. the cron ran before this person's alert was wanted).
+// Secret-gated in fetch(); ignores the admin master switch since it's an
+// explicit, deliberate admin action.
+async function broadcastBirthdayForPerson(env, personId) {
+  const familyDoc = await getDocument(env, 'families/main');
+  const person = familyDoc?.persons?.[personId];
+  if (!person) return { error: 'Person not found', personId };
+  const users = await listDocuments(env, 'users');
+  const recipients = users.filter((u) => u.email);
+  let sent = 0;
+  for (const user of recipients) {
+    if (user.email === person.verifiedEmail) continue; // don't tell someone it's their own birthday
+    try {
+      const { subject, html } = birthdayNotifyEmail({ firstName: person.firstName, lastName: person.lastName, appUrl: APP_URL });
+      await sendEmail(env, { to: user.email, subject, html });
+      sent += 1;
+    } catch (err) {
+      console.error(err);
+    }
+  }
+  return { ok: true, person: `${person.firstName} ${person.lastName || ''}`.trim(), recipients: recipients.length, sent };
+}
+
 export default {
   async fetch(request, env) {
     const origin = request.headers.get('Origin') || '';
@@ -174,6 +199,28 @@ export default {
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: corsHeaders(origin) });
     }
+
+    // Secret-gated manual birthday broadcast (see broadcastBirthdayForPerson) —
+    // bypasses the Firebase-auth Ask flow below, authenticated by its own shared
+    // secret instead since there's no signed-in user driving it. Used to send one
+    // person's "today is X's birthday" email on demand when the daily cron ran
+    // before that alert was wanted.
+    const triggerSecret = request.headers.get('X-Birthday-Trigger');
+    if (triggerSecret) {
+      if (!env.BIRTHDAY_TRIGGER_SECRET || triggerSecret !== env.BIRTHDAY_TRIGGER_SECRET) {
+        return json({ error: 'Invalid trigger secret.' }, 403, origin);
+      }
+      let personId;
+      try {
+        personId = (await request.json())?.personId;
+      } catch {
+        personId = null;
+      }
+      if (!personId) return json({ error: 'personId required.' }, 400, origin);
+      const result = await broadcastBirthdayForPerson(env, personId);
+      return json(result, result.error ? 404 : 200, origin);
+    }
+
     if (request.method !== 'POST') {
       return json({ error: 'Method not allowed.' }, 405, origin);
     }
