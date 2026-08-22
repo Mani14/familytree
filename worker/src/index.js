@@ -172,12 +172,13 @@ async function runBirthdayJob(env) {
 // person on demand (e.g. the cron ran before this person's alert was wanted).
 // Secret-gated in fetch(); ignores the admin master switch since it's an
 // explicit, deliberate admin action.
-async function broadcastBirthdayForPerson(env, personId) {
+async function broadcastBirthdayForPerson(env, personId, onlyEmail) {
   const familyDoc = await getDocument(env, 'families/main');
   const person = familyDoc?.persons?.[personId];
   if (!person) return { error: 'Person not found', personId };
-  const users = await listDocuments(env, 'users');
-  const recipients = users.filter((u) => u.email);
+  // `onlyEmail` sends a single test copy to one address instead of the whole
+  // family broadcast — for checking inbox placement without emailing everyone.
+  const recipients = onlyEmail ? [{ email: onlyEmail }] : (await listDocuments(env, 'users')).filter((u) => u.email);
   let sent = 0;
   for (const user of recipients) {
     if (user.email === person.verifiedEmail) continue; // don't tell someone it's their own birthday
@@ -189,7 +190,7 @@ async function broadcastBirthdayForPerson(env, personId) {
       console.error(err);
     }
   }
-  return { ok: true, person: `${person.firstName} ${person.lastName || ''}`.trim(), recipients: recipients.length, sent };
+  return { ok: true, person: `${person.firstName} ${person.lastName || ''}`.trim(), recipients: recipients.length, sent, test: !!onlyEmail };
 }
 
 export default {
@@ -211,13 +212,16 @@ export default {
         return json({ error: 'Invalid trigger secret.' }, 403, origin);
       }
       let personId;
+      let testEmail;
       try {
-        personId = (await request.json())?.personId;
+        const body = await request.json();
+        personId = body?.personId;
+        testEmail = body?.testEmail;
       } catch {
         personId = null;
       }
       if (!personId) return json({ error: 'personId required.' }, 400, origin);
-      const result = await broadcastBirthdayForPerson(env, personId);
+      const result = await broadcastBirthdayForPerson(env, personId, testEmail);
       return json(result, result.error ? 404 : 200, origin);
     }
 
