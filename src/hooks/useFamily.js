@@ -46,6 +46,13 @@ export function useFamily() {
     personsRef.current = persons;
   }, [persons]);
 
+  // Current root as a ref too — the snapshot listener's closure (below) is
+  // created once and would otherwise read a stale rootPersonId.
+  const rootPersonIdRef = useRef(rootPersonId);
+  useEffect(() => {
+    rootPersonIdRef.current = rootPersonId;
+  }, [rootPersonId]);
+
   // Undo/redo covers data edits only (add/update/delete/link/import) — NOT
   // setRoot or view-mode changes, which live outside useFamily entirely.
   const historyRef = useRef({ past: [], future: [] });
@@ -74,12 +81,36 @@ export function useFamily() {
         }
         if (snap.metadata.hasPendingWrites) return; // ignore our own optimistic echo
         const data = snap.data();
-        const nextPersons = data.persons || {};
-        const nextRoot = data.rootPersonId || Object.keys(nextPersons)[0] || null;
-        lastSyncedPersons.current = nextPersons;
-        lastSyncedRoot.current = nextRoot;
-        setPersons(nextPersons);
-        setRootPersonId(nextRoot);
+        const serverPersons = data.persons || {};
+        const serverRoot = data.rootPersonId || Object.keys(serverPersons)[0] || null;
+
+        // Preserve edits made locally but not yet saved (the save below is
+        // debounced ~700ms): overlay the records THIS device changed/deleted
+        // since the last sync onto the incoming server data, rather than
+        // replacing local state wholesale. Without this, a snapshot arriving
+        // mid-edit — another member's change, or a slightly-delayed echo of an
+        // earlier edit of ours — wipes a just-made change (most visibly a child
+        // reorder), forcing the user to redo it. Same per-record reference-diff
+        // the save effect uses, so it's exactly the set still waiting to be written.
+        const cur = personsRef.current || {};
+        const base = lastSyncedPersons.current || {};
+        const locallyChanged = Object.keys(cur).filter((id) => cur[id] !== base[id]);
+        const locallyDeleted = Object.keys(base).filter((id) => !(id in cur));
+        const mergedPersons = { ...serverPersons };
+        locallyChanged.forEach((id) => {
+          mergedPersons[id] = cur[id];
+        });
+        locallyDeleted.forEach((id) => {
+          delete mergedPersons[id];
+        });
+        const rootChangedLocally = rootPersonIdRef.current !== lastSyncedRoot.current;
+
+        // Baseline tracks what's actually on the server now; the preserved local
+        // edits stay pending, so the save effect diffs them against this and writes them.
+        lastSyncedPersons.current = serverPersons;
+        lastSyncedRoot.current = serverRoot;
+        setPersons(mergedPersons);
+        setRootPersonId(rootChangedLocally ? rootPersonIdRef.current : serverRoot);
         setLoading(false);
       },
       () => setLoading(false)
