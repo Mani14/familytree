@@ -223,6 +223,36 @@
   box-shadow: none;
 }
 
+/* "Share" — copies/shares a direct ?p= link to this person. Outlined pill so it
+   sits beside the solid "Show our link" without competing with it. */
+.detail-relation-share {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 6px;
+  margin-right: 4px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-primary);
+  background: transparent;
+  border: 1.5px solid var(--color-primary);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease), transform var(--duration-fast) var(--ease);
+}
+
+@media (hover: hover) {
+  .detail-relation-share:hover {
+    background: var(--color-primary);
+    color: #fff;
+  }
+}
+
+.detail-relation-share:active {
+  transform: scale(0.97);
+}
+
 .detail-stats {
   display: flex;
   flex-wrap: wrap;

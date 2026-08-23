@@ -638,6 +638,21 @@ export default function App() {
     setFocusId(id);
   }, [revealAncestors]);
 
+  // One-time deep link: opening the app with ?p=<personId> (a shared person
+  // link, see PersonDetail's Share button) opens that person's detail once the
+  // family data has loaded, then strips the param so a later refresh doesn't
+  // force it open again.
+  const deepLinkDone = useRef(false);
+  useEffect(() => {
+    if (deepLinkDone.current || loading || !Object.keys(persons).length) return;
+    deepLinkDone.current = true;
+    const pid = new URLSearchParams(window.location.search).get('p');
+    if (pid && persons[pid]) {
+      handleViewPersonDetails(pid);
+      window.history.replaceState(null, '', window.location.pathname + window.location.hash);
+    }
+  }, [loading, persons, handleViewPersonDetails]);
+
   // Locate (search single-click, and the "Locate Me" pill) centres/highlights a
   // person WITHOUT opening their detail panel — deliberately no setSelectedId.
   // The bumping nonce forces FamilyTree to re-centre even when the target is already

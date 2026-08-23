@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion, Reorder, useDragControls } from 'framer-motion';
-import { BadgeCheck, Baby, Briefcase, Cake, ChevronDown, ChevronUp, Clock, Eye, GitBranch, GripVertical, HeartHandshake, Mail, MapPin, Network, Pencil, Phone, Route, Sparkles, Trash2, UserPlus, Users, X, XCircle } from 'lucide-react';
+import { BadgeCheck, Baby, Briefcase, Cake, ChevronDown, ChevronUp, Clock, Eye, GitBranch, GripVertical, HeartHandshake, Mail, MapPin, Network, Pencil, Phone, Route, Share2, Sparkles, Trash2, UserPlus, Users, X, XCircle } from 'lucide-react';
 import {
   formatBirthdayNoYear,
   formatDateDisplay,
@@ -209,6 +209,7 @@ export default function PersonDetail({
   onViewDescendants,
 }) {
   const [showWhy, setShowWhy] = useState(false);
+  const [shared, setShared] = useState(false);
   if (!person) return null;
 
   const spouse = getSpouse(persons, person);
@@ -242,6 +243,23 @@ export default function PersonDetail({
   const lastSpace = fullName.lastIndexOf(' ');
   const namePrefix = lastSpace === -1 ? '' : fullName.slice(0, lastSpace + 1);
   const nameLastWord = lastSpace === -1 ? fullName : fullName.slice(lastSpace + 1);
+
+  // Shares a direct link to THIS person (opened via App's ?p= deep link). Uses
+  // the native share sheet where available (mobile), else copies to clipboard.
+  const handleShare = async () => {
+    const url = `${window.location.origin}${window.location.pathname}?p=${person.id}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: `${fullName} — Family Tree`, text: `${fullName} on our family tree`, url });
+      } else {
+        await navigator.clipboard.writeText(url);
+        setShared(true);
+        setTimeout(() => setShared(false), 1800);
+      }
+    } catch {
+      // share sheet cancelled, or clipboard blocked — nothing to recover from
+    }
+  };
 
   return (
     <motion.aside
@@ -322,6 +340,14 @@ export default function PersonDetail({
               <Route size={12} /> Show our link
             </button>
           )}
+          <button
+            type="button"
+            className="detail-relation-share"
+            onClick={handleShare}
+            title={`Share a link to ${fullName}`}
+          >
+            <Share2 size={12} /> {shared ? 'Copied!' : 'Share'}
+          </button>
           {ageInfo && (
             <span className="detail-age">
               {ageInfo.label}: {ageInfo.value}
