@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowLeft, Check, Compass, Link2, LocateFixed, LogOut, Map, MessageCircleQuestion, Menu, PlayCircle, Redo2, Route, ShieldAlert, Sparkles, Undo2, X } from 'lucide-react';
 import { useFamily } from './hooks/useFamily';
@@ -148,11 +148,6 @@ export default function App() {
   // family doc's rootPersonId only as a last resort for a brand-new/unlinked
   // visitor. Skips any reference to someone who's since been deleted.
   const effectiveRootId = [myRootId, meId, rootPersonId].find((id) => id && persons[id]) || null;
-  // The whole tree re-lays out on any `persons` change; deferring its copy lets
-  // that expensive work run at lower priority so a rapid edit (e.g. dragging a
-  // child's birth-order in the detail panel that sits over the tree) stays snappy
-  // instead of blocking on a full re-layout of every node behind it.
-  const treePersons = useDeferredValue(persons);
   const treeRef = useRef(null);
   // "Find Connection" travel animation state — lives in refs, not React state,
   // since it's driven by a chain of setTimeouts rather than renders. `index` is
@@ -1083,7 +1078,7 @@ export default function App() {
         {rootPersonId ? (
           <FamilyTree
             ref={treeRef}
-            persons={treePersons}
+            persons={persons}
             rootId={focusId || effectiveRootId}
             priorityId={effectiveRootId}
             collapsed={collapsed}
