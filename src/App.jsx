@@ -347,7 +347,16 @@ export default function App() {
   const closeConfirmDialog = useCallback(() => setConfirmDialog(null), []);
   const requestSetMe = useCallback((personId) => {
     if (!personId) {
-      handleSetMe(null);
+      setConfirmDialog({
+        title: 'Unlink your account?',
+        message: 'This removes the link between your signed-in account and your profile — relationship labels shown "to you" stop working until you link again.',
+        confirmLabel: 'Unlink',
+        danger: true,
+        onConfirm: () => {
+          handleSetMe(null);
+          setConfirmDialog(null);
+        },
+      });
       return;
     }
     const person = getPerson(persons, personId);
@@ -494,9 +503,20 @@ export default function App() {
     if (welcomeDecidedRef.current || loading || !authReady || !user || !meReady) return;
     welcomeDecidedRef.current = true;
     if (meId) return;
+    // Self-heal: users/<uid>.meId can be missing even though this account is
+    // already stamped on a person (verifiedEmail) — the link lives in two stores
+    // that can drift apart. Recover meId from the matching verifiedEmail so "you"
+    // survives as long as EITHER store still has it, instead of nagging to re-add.
+    if (user.email) {
+      const linked = Object.keys(persons).find((id) => persons[id]?.verifiedEmail === user.email);
+      if (linked) {
+        setMe(linked);
+        return;
+      }
+    }
     if (sessionStorage.getItem(WELCOME_DISMISSED_KEY) === '1') return;
     setShowWelcomePrompt(true);
-  }, [loading, authReady, user, meId, meReady]);
+  }, [loading, authReady, user, meId, meReady, persons, setMe]);
 
   const dismissWelcomePrompt = useCallback(() => {
     sessionStorage.setItem(WELCOME_DISMISSED_KEY, '1');
