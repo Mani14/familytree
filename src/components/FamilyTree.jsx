@@ -516,7 +516,18 @@ const FamilyTree = forwardRef(function FamilyTree(
         }
       });
       const pts = [...pointers.current.values()].slice(0, 2);
-      pinch.current = { startDist: pinchDistance(pts) || 1, startZoom: zoomRef.current };
+      const rect = e.currentTarget.getBoundingClientRect();
+      pinch.current = {
+        startDist: pinchDistance(pts) || 1,
+        startZoom: zoomRef.current,
+        // Anchor FIXED at the pinch's start midpoint (container-relative). Using
+        // the live finger midpoint each move made the tree snap around on Android
+        // Chrome, where pointermove fires one finger at a time so the midpoint
+        // oscillated frame-to-frame; a fixed anchor zooms smoothly around where
+        // the pinch began.
+        anchorX: (pts[0].x + pts[1].x) / 2 - rect.left,
+        anchorY: (pts[0].y + pts[1].y) / 2 - rect.top,
+      };
       setIsDragging(true);
       return;
     }
@@ -532,15 +543,10 @@ const FamilyTree = forwardRef(function FamilyTree(
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
     if (pinch.current && pointers.current.size >= 2) {
-      const el = containerRef.current;
-      if (!el) return;
       const pts = [...pointers.current.values()].slice(0, 2);
-      const rect = el.getBoundingClientRect();
-      const anchorX = (pts[0].x + pts[1].x) / 2 - rect.left;
-      const anchorY = (pts[0].y + pts[1].y) / 2 - rect.top;
       const ratio = pinchDistance(pts) / pinch.current.startDist;
       const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, pinch.current.startZoom * ratio));
-      zoomAt(anchorX, anchorY, next);
+      zoomAt(pinch.current.anchorX, pinch.current.anchorY, next);
       return;
     }
 
@@ -573,10 +579,16 @@ const FamilyTree = forwardRef(function FamilyTree(
     }
 
     if (pointers.current.size >= 2) {
-      // Still pinching with the remaining fingers — re-baseline so lifting one
-      // finger doesn't snap the zoom to a new value.
+      // Still pinching with the remaining fingers — re-baseline (incl. a fresh
+      // fixed anchor) so lifting one finger doesn't snap the zoom to a new value.
       const pts = [...pointers.current.values()].slice(0, 2);
-      pinch.current = { startDist: pinchDistance(pts) || 1, startZoom: zoomRef.current };
+      const rect = e.currentTarget?.getBoundingClientRect?.();
+      pinch.current = {
+        startDist: pinchDistance(pts) || 1,
+        startZoom: zoomRef.current,
+        anchorX: rect ? (pts[0].x + pts[1].x) / 2 - rect.left : pinch.current?.anchorX ?? 0,
+        anchorY: rect ? (pts[0].y + pts[1].y) / 2 - rect.top : pinch.current?.anchorY ?? 0,
+      };
       return;
     }
 
