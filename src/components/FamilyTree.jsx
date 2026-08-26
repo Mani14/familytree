@@ -501,12 +501,16 @@ const FamilyTree = forwardRef(function FamilyTree(
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
     if (pointers.current.size >= 2) {
-      // Two fingers down = pinch-zoom, even if one of them started on a card —
-      // capture both now and abandon any single-finger pan/tap in progress.
+      // Two fingers down = pinch-zoom, even if one of them started on a card.
+      // Abandon any single-finger pan in progress and RELEASE any pointer
+      // capture — capturing pointers during a pinch breaks multi-touch tracking
+      // on Android Chrome (pinch went jumpy/dead there), while iOS tolerated it.
+      // Both fingers still deliver pointermove to this element via normal event
+      // bubbling without any capture, so the pinch math below is unaffected.
       drag.current = null;
       pointers.current.forEach((_, id) => {
         try {
-          e.currentTarget.setPointerCapture(id);
+          if (e.currentTarget.hasPointerCapture?.(id)) e.currentTarget.releasePointerCapture(id);
         } catch {
           // pointer may already be gone — safe to ignore
         }
