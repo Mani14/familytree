@@ -57,7 +57,10 @@ export default function FamilyMap({ persons, isOpen, onClose, onSelect }) {
   const [query, setQuery] = useState('');
   const [isOpenResults, setIsOpenResults] = useState(false);
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);
-  const [locatedPersonId, setLocatedPersonId] = useState(null);
+  // A Set, not a single id — a "Places" match (see placesByLocation below)
+  // can cover several people who share the exact same recorded location, and
+  // all of them should pulse together, not just the first.
+  const [locatedIds, setLocatedIds] = useState(() => new Set());
   const mapRef = useRef(null);
   const markerRefs = useRef({});
   // Caches each person's icon by (id, pulse) so an unrelated re-render (e.g.
@@ -78,13 +81,35 @@ export default function FamilyMap({ persons, isOpen, onClose, onSelect }) {
     return peopleWithCoords.filter((p) => getDisplayName(p).toLowerCase().includes(term)).slice(0, MAX_RESULTS);
   }, [peopleWithCoords, query]);
 
+  // Places come from the family data itself, not an external geocoder — only
+  // locations someone has actually recorded (Edit → Location) show up, same
+  // as the People matches above. Grouped by the exact recorded text so e.g.
+  // several siblings all listed as "Vedaranyam" surface as one place with all
+  // of them underneath it, rather than duplicate entries.
+  const placesByLocation = useMemo(() => {
+    const groups = new Map();
+    for (const p of peopleWithCoords) {
+      const key = (p.location || '').trim();
+      if (!key) continue;
+      if (!groups.has(key)) groups.set(key, { location: key, people: [] });
+      groups.get(key).people.push(p);
+    }
+    return [...groups.values()];
+  }, [peopleWithCoords]);
+
+  const placeMatches = useMemo(() => {
+    const term = query.trim().toLowerCase();
+    if (!term) return [];
+    return placesByLocation.filter((g) => g.location.toLowerCase().includes(term)).slice(0, MAX_RESULTS);
+  }, [placesByLocation, query]);
+
   // Resets on every open, not just once — mirrors PersonForm/other panels not
   // carrying stale search text over from the last time this was opened.
   useEffect(() => {
     if (isOpen) {
       setQuery('');
       setIsOpenResults(false);
-      setLocatedPersonId(null);
+      setLocatedIds(new Set());
     }
   }, [isOpen]);
 
@@ -110,7 +135,20 @@ export default function FamilyMap({ persons, isOpen, onClose, onSelect }) {
     // Pulses continuously (see the infinite iteration-count in global.css)
     // until a different search replaces it or the map is closed/reopened
     // (see the isOpen-reset effect above) — no auto-clearing timeout.
-    setLocatedPersonId(person.id);
+    setLocatedIds(new Set([person.id]));
+  };
+
+  // A place match can be several people sharing one recorded location — fit
+  // to all of them (a single person just centers on that one point, same as
+  // FitBounds's own one-point special case above) and pulse every marker
+  // there, not just the first.
+  const flyToPlace = (group) => {
+    setQuery('');
+    setIsOpenResults(false);
+    const points = group.people.map((p) => [p.locationLat, p.locationLng]);
+    if (points.length === 1) mapRef.current?.flyTo(points[0], FOUND_ZOOM);
+    else mapRef.current?.flyToBounds(points, { padding: [30, 30] });
+    setLocatedIds(new Set(group.people.map((p) => p.id)));
   };
 
   return (
@@ -126,7 +164,7 @@ export default function FamilyMap({ persons, isOpen, onClose, onSelect }) {
             <Search size={14} className="family-map-search-icon" />
             <input
               type="text"
-              placeholder="Find someone on the map…"
+              placeholder="Find someone, or search a place…"
               value={query}
               onChange={(e) => { setQuery(e.target.value); setIsOpenResults(true); }}
               onFocus={() => setIsOpenResults(true)}
@@ -141,18 +179,37 @@ export default function FamilyMap({ persons, isOpen, onClose, onSelect }) {
                   exit={{ opacity: 0, y: -6 }}
                   transition={{ duration: 0.15, ease: [0.4, 0, 0.2, 1] }}
                 >
-                  {matches.length > 0 ? (
-                    matches.map((p) => (
-                      <li key={p.id}>
-                        {/* onMouseDown (not onClick) fires before the input's blur
-                            closes the dropdown, same trick SearchBar.jsx uses. */}
-                        <button type="button" onMouseDown={(e) => { e.preventDefault(); flyTo(p); }}>
-                          {getDisplayName(p)}
-                        </button>
-                      </li>
-                    ))
-                  ) : (
-                    <li className="family-map-search-empty">No pinned matches</li>
+                  {matches.length === 0 && placeMatches.length === 0 && (
+                    <li className="family-map-search-empty">No matches</li>
+                  )}
+                  {matches.length > 0 && (
+                    <>
+                      <li className="family-map-search-section-label">People</li>
+                      {matches.map((p) => (
+                        <li key={p.id}>
+                          {/* onMouseDown (not onClick) fires before the input's blur
+                              closes the dropdown, same trick SearchBar.jsx uses. */}
+                          <button type="button" onMouseDown={(e) => { e.preventDefault(); flyTo(p); }}>
+                            {getDisplayName(p)}
+                          </button>
+                        </li>
+                      ))}
+                    </>
+                  )}
+                  {placeMatches.length > 0 && (
+                    <>
+                      <li className="family-map-search-section-label">Places</li>
+                      {placeMatches.map((group) => (
+                        <li key={group.location}>
+                          <button type="button" onMouseDown={(e) => { e.preventDefault(); flyToPlace(group); }}>
+                            <span className="family-map-search-place-name">{group.location}</span>
+                            <span className="family-map-search-place-people">
+                              {group.people.map((p) => getDisplayName(p)).join(', ')}
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </>
                   )}
                 </motion.ul>
               )}
@@ -169,7 +226,7 @@ export default function FamilyMap({ persons, isOpen, onClose, onSelect }) {
                   key={p.id}
                   ref={(el) => { markerRefs.current[p.id] = el; }}
                   position={[p.locationLat, p.locationLng]}
-                  icon={getIcon(p, index, p.id === locatedPersonId)}
+                  icon={getIcon(p, index, locatedIds.has(p.id))}
                 >
                   {zoom >= MIN_ZOOM_FOR_LABELS && (
                     <Tooltip

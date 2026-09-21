@@ -1,13 +1,18 @@
-// CARTO's free raster tiles (no API key) — light_all/dark_all so the map
-// matches the app's own theme instead of always showing a plain/light basemap.
+// CARTO's basemaps.cartocdn.com light_all/dark_all tiles used to be free with
+// no API key — as of this fix they now silently return HTTP 200 with a
+// watermarked "API KEY REQUIRED" placeholder image instead of erroring, so
+// the map looked broken without any failed network request to point at it.
+// Switched to Esri's free "Canvas" light/dark gray basemaps instead, which
+// still need no key and still give us a matching light/dark pair.
 export const TILE_URLS = {
-  light: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-  dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+  light: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+  dark: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
 };
 
-// Required by both OpenStreetMap's and CARTO's usage policies.
+// Required by both OpenStreetMap's (place names come from OSM data via Esri)
+// and Esri's usage policies.
 export const TILE_ATTRIBUTION =
-  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://www.esri.com">Esri</a>';
 
 // Nominatim (OpenStreetMap's free geocoder) — no API key, CORS-enabled for
 // browser use. Usage policy asks for restraint (no bulk/heavy automated use),

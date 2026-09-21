@@ -101,6 +101,32 @@
   color: var(--color-text-muted);
 }
 
+/* A place button holds two spans (name + who's there) instead of one plain
+   text node like a person button does — stack them rather than letting the
+   people list run inline and crowd the place name on narrow widths. */
+.family-map-search-place-name {
+  display: block;
+}
+
+.family-map-search-place-people {
+  display: block;
+  margin-top: 1px;
+  font-size: 11.5px;
+  color: var(--color-text-muted);
+}
+
+/* "People" / "Places" headers splitting the two result kinds — only rendered
+   when that section actually has matches (see FamilyMap.jsx), so this never
+   shows as an empty heading with nothing underneath it. */
+.family-map-search-section-label {
+  padding: 6px 8px 2px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
 .family-map-canvas {
   border-radius: var(--radius-md);
   overflow: hidden;
